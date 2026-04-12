@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Pattern Finder | IDTW + k*-NN</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#0e0c0a; --surface:#1a1712; --surface2:#221f1a;
+  --border:#3a3228; --accent:#c9a84c; --accent2:#f0d080;
+  --text:#e8dcc8; --text2:#9a8c78;
+  --green:#56b870; --red:#e05a5a; --blue:#5b9bd5;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;padding:16px;max-width:1100px;margin:0 auto;}
+h1{font-size:1.35rem;color:var(--accent2);margin-bottom:3px;}
+.subtitle{font-size:0.78rem;color:var(--text2);margin-bottom:18px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;}
+.card-title{font-size:0.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.grid{display:grid;gap:12px;}
+.grid-4{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));}
+.grid-2{grid-template-columns:1fr 1fr;}
+@media(max-width:600px){.grid-2{grid-template-columns:1fr;}}
+.ctrl{display:flex;flex-direction:column;gap:4px;}
+label{font-size:.71rem;color:var(--text2);}
+input,select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-size:.84rem;width:100%;}
+input:focus,select:focus{outline:none;border-color:var(--accent);}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;}
+.btn{padding:7px 16px;border:none;border-radius:6px;cursor:pointer;font-size:.84rem;font-weight:600;transition:opacity .15s;}
+.btn:hover{opacity:.82;} .btn:disabled{opacity:.35;cursor:not-allowed;}
+.btn-primary{background:var(--accent);color:#1a1408;}
+.btn-go{background:var(--green);color:#071409;}
+.btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
+.tabs{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;width:fit-content;margin-bottom:12px;}
+.tab{padding:6px 18px;cursor:pointer;font-size:.8rem;color:var(--text2);background:var(--surface);border:none;transition:all .15s;}
+.tab.active{background:var(--accent);color:#1a1408;font-weight:700;}
+.live-only{display:none;}
+.live-only.show{display:contents;}
+.status{font-size:.78rem;color:var(--text2);}
+.status.ok{color:var(--green);} .status.err{color:var(--red);} .status.loading{color:var(--accent);}
+.prog{width:100%;height:3px;background:var(--surface2);border-radius:2px;overflow:hidden;margin-top:8px;display:none;}
+.prog-fill{height:100%;background:var(--accent);transition:width .08s;width:0%;}
+.chart-wrap{position:relative;}
+.chart-h280{height:280px;} .chart-h200{height:200px;}
+.sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;}
+@media(max-width:560px){.sum-grid{grid-template-columns:repeat(2,1fr);}}
+.sum-card{background:var(--surface2);border-radius:8px;padding:10px 12px;}
+.sum-lbl{font-size:.67rem;color:var(--text2);margin-bottom:3px;}
+.sum-val{font-size:1.05rem;font-weight:700;}
+.pos{color:var(--green);} .neg{color:var(--red);} .neu{color:var(--text2);}
+table{width:100%;border-collapse:collapse;font-size:.79rem;}
+th{text-align:left;color:var(--text2);font-weight:600;padding:5px 8px;border-bottom:1px solid var(--border);}
+td{padding:5px 8px;border-bottom:1px solid rgba(58,50,40,.45);}
+tr:last-child td{border-bottom:none;}
+.info{background:var(--surface2);border-left:3px solid var(--accent);padding:10px 13px;border-radius:4px;font-size:.76rem;color:var(--text2);line-height:1.6;}
+</style>
+</head>
+<body>
+
+<h1>Stock Pattern Finder</h1>
+<p class="subtitle">IDTW（改良型 Dynamic Time Warping）+ k*-NN によるパターン認識 &nbsp;|&nbsp; Step 4: バックテスト・最適 k* 探索</p>
+
+<!-- ===== Controls ===== -->
+<div class="card">
+  <div class="card-title">設定</div>
+
+  <div class="tabs">
+    <button class="tab active" id="tabDemo" onclick="setMode('demo')">デモデータ</button>
+    <button class="tab"        id="tabLive" onclick="setMode('live')">Live (Yahoo Finance) ※ローカルのみ</button>
+  </div>
+
+  <!-- GitHub Pages warning -->
+  <div id="ghPagesNote" style="display:none;background:#2a1f10;border:1px solid #c9a84c;border-radius:6px;padding:9px 13px;font-size:.77rem;color:#c9a84c;margin-bottom:10px;">
+    ⚠️ GitHub Pages（HTTPS）からは Live モードを利用できません。<br>
+    ローカルで <code>python server.py</code> を起動し、ブラウザで直接 <code>pattern-finder.html</code> を開いてください。<br>
+    このページでは <strong>デモモード</strong> がそのまま使えます。
+  </div>
+
+  <div class="grid grid-4">
+    <!-- Live only -->
+    <div class="ctrl live-only" id="lcServer">
+      <label>サーバー URL</label>
+      <input id="serverUrl" value="http://localhost:5000" placeholder="http://localhost:5000">
+    </div>
+    <div class="ctrl live-only" id="lcTicker">
+      <label>ティッカー</label>
+      <input id="ticker" value="AAPL" placeholder="AAPL, 7203.T, BTC-USD …">
+    </div>
+    <div class="ctrl live-only" id="lcPeriod">
+      <label>取得期間</label>
+      <select id="period">
+        <option value="2y">2年</option>
+        <option value="5y" selected>5年</option>
+        <option value="10y">10年</option>
+        <option value="max">最大</option>
+      </select>
+    </div>
+    <!-- Common -->
+    <div class="ctrl">
+      <label>クエリ窓（日数）</label>
+      <select id="queryLen">
+        <option value="20">20日</option>
+        <option value="30" selected>30日</option>
+        <option value="60">60日</option>
+        <option value="90">90日</option>
+      </select>
+    </div>
+    <div class="ctrl">
+      <label>将来予測期間（日数）</label>
+      <select id="futureLen">
+        <option value="5">5日</option>
+        <option value="10" selected>10日</option>
+        <option value="20">20日</option>
+        <option value="30">30日</option>
+      </select>
+    </div>
+    <div class="ctrl">
+      <label>k（近傍数）</label>
+      <input type="number" id="kValue" value="10" min="1" max="50">
+    </div>
+    <div class="ctrl">
+      <label>DTW 帯域幅</label>
+      <select id="bandwidth">
+        <option value="0.05">5 %</option>
+        <option value="0.10" selected>10 %</option>
+        <option value="0.20">20 %</option>
+        <option value="1.00">無制約</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="btn btn-primary" id="btnLoad" onclick="loadData()">データ読込</button>
+    <button class="btn btn-go"    id="btnSearch" onclick="runSearch()" disabled>パターン検索</button>
+    <button class="btn btn-ghost" id="btnLatest" onclick="useLatest()" disabled>最新窓を使用</button>
+    <span class="status" id="statusMsg">まずデータを読み込んでください</span>
+  </div>
+  <div class="prog" id="prog"><div class="prog-fill" id="progFill"></div></div>
+</div>
+
+<!-- ===== Main chart ===== -->
+<div class="card">
+  <div class="card-title">価格チャート &nbsp;—&nbsp; クリックしてクエリ開始位置を選択</div>
+  <div class="chart-wrap chart-h280"><canvas id="mainChart"></canvas></div>
+  <p class="status" id="queryInfo" style="margin-top:8px">—</p>
+</div>
+
+<!-- ===== Step 3: Clustering ===== -->
+<div class="card">
+  <div class="card-title">Step 3: k-medoids クラスタリング</div>
+  <p style="font-size:.77rem;color:var(--text2);margin-bottom:12px;">
+    過去の全パターンを形の似たグループに自動分類します。<strong>Live モードのみ対応</strong>。データ読込後に実行してください。
+  </p>
+  <div class="grid grid-4">
+    <div class="ctrl">
+      <label>クラスタ数 k</label>
+      <input type="number" id="cluK" value="5" min="2" max="10">
+    </div>
+    <div class="ctrl">
+      <label>ストライド（日）</label>
+      <select id="cluStride">
+        <option value="3">3日（精度高・遅い）</option>
+        <option value="5" selected>5日（推奨）</option>
+        <option value="10">10日（速い）</option>
+      </select>
+    </div>
+    <div class="ctrl">
+      <label>将来予測期間（日）</label>
+      <select id="cluFuture">
+        <option value="5">5日</option>
+        <option value="10" selected>10日</option>
+        <option value="20">20日</option>
+      </select>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn btn-primary" id="btnCluster" onclick="runCluster()" disabled>クラスタリング実行</button>
+    <span class="status" id="cluStatus">データ読込後に実行できます</span>
+  </div>
+  <div class="prog" id="cluProg"><div class="prog-fill" id="cluFill"></div></div>
+</div>
+
+<!-- Cluster results -->
+<div id="cluResults" style="display:none">
+  <div class="card">
+    <div class="card-title">クラスタ別 代表パターン（メドイド・Z 正規化）</div>
+    <div class="chart-wrap chart-h200"><canvas id="cluMedoidChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">クラスタ別 将来リターン分布</div>
+    <div class="chart-wrap chart-h200"><canvas id="cluReturnChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">クラスタ統計</div>
+    <table>
+      <thead>
+        <tr><th>クラスタ</th><th>出現数</th><th>平均リターン</th><th>勝率</th><th>代表パターン日付</th></tr>
+      </thead>
+      <tbody id="cluTbody"></tbody>
+    </table>
+  </div>
+  <div class="card" id="cluQueryCard" style="display:none">
+    <div class="card-title">現在のクエリ窓の所属クラスタ</div>
+    <p class="status ok" id="cluQueryResult" style="font-size:.9rem;padding:4px 0;"></p>
+  </div>
+</div>
+
+<!-- ===== Step 4: Backtest ===== -->
+<div class="card">
+  <div class="card-title">Step 4: バックテスト — 最適 k* 探索</div>
+  <p style="font-size:.77rem;color:var(--text2);margin-bottom:12px;">
+    データを訓練/テストに分割し、k=1〜k_max で方向的中率を計測して最適 k* を推奨します。<strong>Live モードのみ対応</strong>。
+  </p>
+  <div class="grid grid-4">
+    <div class="ctrl">
+      <label>k の最大値</label>
+      <input type="number" id="btKmax" value="20" min="2" max="30">
+    </div>
+    <div class="ctrl">
+      <label>訓練 / テスト 分割</label>
+      <select id="btSplit">
+        <option value="0.6">60% / 40%</option>
+        <option value="0.7" selected>70% / 30%</option>
+        <option value="0.8">80% / 20%</option>
+      </select>
+    </div>
+  </div>
+  <div class="row">
+    <button class="btn btn-primary" id="btnBacktest" onclick="runBacktest()" disabled>バックテスト実行</button>
+    <span class="status" id="btStatus">データ読込後に実行できます</span>
+  </div>
+  <div class="prog" id="btProg"><div class="prog-fill" id="btFill"></div></div>
+</div>
+
+<!-- Backtest results -->
+<div id="btResults" style="display:none">
+  <div class="card">
+    <div class="card-title">方向的中率 (%) vs k &nbsp;— ★ が最適 k*</div>
+    <div class="sum-grid" id="btSummary"></div>
+    <div class="chart-wrap chart-h200"><canvas id="btChart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">k 別 詳細テーブル</div>
+    <table>
+      <thead><tr><th>k</th><th>方向的中率</th><th>予測↔実績 相関</th><th>平均予測リターン</th></tr></thead>
+      <tbody id="btTbody"></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-title">k* をパターン検索に適用</div>
+    <p style="font-size:.8rem;color:var(--text2);margin-bottom:10px;" id="btApplyMsg"></p>
+    <button class="btn btn-go" onclick="applyBestK()">この k* で検索する</button>
+  </div>
+</div>
+
+<!-- ===== Results ===== -->
+<div id="results" style="display:none">
+
+  <div class="card">
+    <div class="card-title">サマリー統計</div>
+    <div class="sum-grid">
+      <div class="sum-card"><div class="sum-lbl">平均リターン</div><div class="sum-val" id="sAvg">—</div></div>
+      <div class="sum-card"><div class="sum-lbl">勝率</div><div class="sum-val" id="sWin">—</div></div>
+      <div class="sum-card"><div class="sum-lbl">中央値 DTW 距離</div><div class="sum-val" id="sDist">—</div></div>
+      <div class="sum-card"><div class="sum-lbl">マッチ数</div><div class="sum-val" id="sCnt">—</div></div>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-title">パターンオーバーレイ（Z 正規化）</div>
+      <div class="chart-wrap chart-h200"><canvas id="patternChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">将来価格変動（終端 = 0 %）</div>
+      <div class="chart-wrap chart-h200"><canvas id="futureChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">マッチング詳細</div>
+    <table>
+      <thead><tr><th>#</th><th>開始日</th><th>終了日</th><th>DTW 距離</th><th>将来リターン</th><th>最大上昇</th><th>最大下落</th></tr></thead>
+      <tbody id="matchTbody"></tbody>
+    </table>
+  </div>
+
+  <div class="info">
+    <strong>アルゴリズム解説</strong><br>
+    <strong>IDTW</strong>: クエリ窓・候補窓をそれぞれ Z スコア正規化し、Sakoe-Chiba 帯域制約付き DTW で距離を計算。距離はパス長で正規化。<br>
+    <strong>k*-NN</strong>: DTW 距離昇順で上位 k 件を近傍とし（重複窓は除外）、将来リターンの平均・勝率を推定。<br>
+    ステップ 3 で k-medoids クラスタリング、ステップ 4 のバックテストで最適 k* を自動決定。「k* を適用」ボタンで近傍数を最適値に設定できます。
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// State
+// =====================================================================
+const S = {
+  mode: 'demo',
+  data: null,
+  queryStart: 0,
+  matches: [],
+  clusterData: null,
+  backtestData: null,
+  charts: {}
+};
+
+// =====================================================================
+// Mode toggle
+// =====================================================================
+function setMode(m) {
+  S.mode = m;
+  document.getElementById('tabDemo').classList.toggle('active', m === 'demo');
+  document.getElementById('tabLive').classList.toggle('active', m === 'live');
+  ['lcServer','lcTicker','lcPeriod'].forEach(id => {
+    document.getElementById(id).classList.toggle('show', m === 'live');
+  });
+}
+
+// =====================================================================
+// Demo data — seeded GBM, ~5 years of daily bars
+// =====================================================================
+function generateDemo() {
+  let seed = 12345;
+  const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 0xFFFFFFFF; };
+  const randn = () => Math.sqrt(-2 * Math.log(rng() + 1e-12)) * Math.cos(2 * Math.PI * rng());
+
+  const dates = [], close = [], open = [], high = [], low = [], volume = [];
+  let price = 150;
+  const start = new Date('2019-01-02');
+  let offset = 0;
+
+  while (dates.length < 1300) {
+    const d = new Date(start); d.setDate(d.getDate() + offset++);
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+
+    const t = dates.length / 1300;
+    let mu = 0.0003, sigma = 0.015;
+    if (t > 0.25 && t < 0.35) { mu = -0.004; sigma = 0.028; }
+    if (t > 0.35 && t < 0.50) { mu =  0.003; sigma = 0.022; }
+    if (t > 0.70 && t < 0.80) { mu = -0.002; sigma = 0.020; }
+
+    const ret = mu + sigma * randn();
+    const prev = price;
+    price *= Math.exp(ret);
+
+    const o = prev * (1 + 0.003 * (rng() - 0.5));
+    const c = price;
+    const h = Math.max(o, c) * (1 + rng() * 0.007);
+    const l = Math.min(o, c) * (1 - rng() * 0.007);
+
+    dates.push(d.toISOString().slice(0, 10));
+    close.push(+c.toFixed(2)); open.push(+o.toFixed(2));
+    high.push(+h.toFixed(2));  low.push(+l.toFixed(2));
+    volume.push(Math.floor((40 + rng() * 80) * 1e6));
+  }
+  return { ticker: 'DEMO', dates, close, open, high, low, volume };
+}
+
+// =====================================================================
+// Data loading
+// =====================================================================
+async function loadData() {
+  const btn = document.getElementById('btnLoad');
+  btn.disabled = true;
+  status('loading', 'データ読込中…');
+
+  try {
+    let data;
+    if (S.mode === 'demo') {
+      await tick();
+      data = generateDemo();
+      status('ok', `デモデータ読込完了: ${data.dates.length} 日分 (${data.dates[0]} 〜 ${data.dates.at(-1)})`);
+    } else {
+      const base   = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
+      const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+      const period = document.getElementById('period').value;
+      const res    = await fetch(`${base}/api/stock?ticker=${encodeURIComponent(ticker)}&period=${period}`);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || `HTTP ${res.status}`); }
+      data = await res.json();
+      status('ok', `${data.ticker}: ${data.count} 日分 (${data.dates[0]} 〜 ${data.dates.at(-1)})`);
+    }
+
+    S.data = data;
+    const qLen = +document.getElementById('queryLen').value;
+    const fLen = +document.getElementById('futureLen').value;
+    S.queryStart = Math.max(0, data.close.length - qLen - fLen - 5);
+
+    drawMain();
+    document.getElementById('btnSearch').disabled = false;
+    document.getElementById('btnLatest').disabled = false;
+    document.getElementById('results').style.display = 'none';
+
+    const canCluster = S.mode === 'live';
+    document.getElementById('btnCluster').disabled = !canCluster;
+    cluStatus(canCluster ? 'ok' : 'neu', canCluster ? '実行できます' : 'Live モードのみ対応');
+    document.getElementById('cluResults').style.display = 'none';
+    document.getElementById('btnBacktest').disabled = !canCluster;
+    btStatus(canCluster ? 'ok' : 'neu', canCluster ? '実行できます' : 'Live モードのみ対応');
+    document.getElementById('btResults').style.display = 'none';
+  } catch(e) {
+    status('err', 'エラー: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function useLatest() {
+  if (!S.data) return;
+  const qLen = +document.getElementById('queryLen').value;
+  const fLen = +document.getElementById('futureLen').value;
+  S.queryStart = S.data.close.length - qLen - fLen;
+  drawMain();
+}
+
+// =====================================================================
+// Main chart
+// =====================================================================
+function drawMain() {
+  const { dates, close, ticker } = S.data;
+  const qLen = +document.getElementById('queryLen').value;
+  const qs = S.queryStart, qe = qs + qLen;
+
+  if (S.charts.main) S.charts.main.destroy();
+
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  S.charts.main = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [
+        {
+          label: ticker,
+          data: close,
+          borderColor: '#5b9bd5', borderWidth: 1.5,
+          pointRadius: 0, tension: 0, fill: false,
+        },
+        {
+          label: 'Query',
+          data: close.map((v, i) => (i >= qs && i < qe) ? v : null),
+          borderColor: '#c9a84c', borderWidth: 3,
+          pointRadius: 0, tension: 0, fill: false, spanGaps: false,
+        },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      onClick(evt, _el, chart) {
+        const ca = chart.chartArea;
+        const relX = evt.x - ca.left;
+        const w    = ca.right - ca.left;
+        if (relX < 0 || relX > w) return;
+        const maxIdx = dates.length - qLen - (+document.getElementById('futureLen').value);
+        const idx = Math.round(Math.max(0, Math.min(1, relX / w)) * (dates.length - 1));
+        S.queryStart = Math.max(0, Math.min(idx, maxIdx));
+        drawMain();
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          mode: 'index', intersect: false,
+          filter: item => item.datasetIndex === 0,
+          callbacks: { label: i => ` ${i.raw?.toFixed(2)}` }
+        }
+      },
+      scales: {
+        x: { ticks: { color:'#9a8c78', maxTicksLimit:8, maxRotation:0, font:{size:11} }, grid:{color:'rgba(58,50,40,.3)'} },
+        y: { ticks: { color:'#9a8c78', font:{size:11} }, grid:{color:'rgba(58,50,40,.3)'} }
+      }
+    }
+  });
+
+  const qs2 = S.queryStart;
+  const qe2 = qs2 + qLen;
+  const d1 = dates[qs2] ?? '—', d2 = dates[Math.min(qe2 - 1, dates.length - 1)] ?? '—';
+  document.getElementById('queryInfo').textContent =
+    `クエリ窓: ${d1} 〜 ${d2}（${qLen} 日）　—　チャートをクリックして変更`;
+}
+
+// =====================================================================
+// IDTW
+// =====================================================================
+function zNorm(arr) {
+  const n = arr.length;
+  let mean = 0;
+  for (let i = 0; i < n; i++) mean += arr[i];
+  mean /= n;
+  let std = 0;
+  for (let i = 0; i < n; i++) std += (arr[i] - mean) ** 2;
+  std = Math.sqrt(std / n);
+  if (std < 1e-10) return new Float64Array(n);
+  const out = new Float64Array(n);
+  for (let i = 0; i < n; i++) out[i] = (arr[i] - mean) / std;
+  return out;
+}
+
+function dtwDist(s, t, w) {
+  const n = s.length;
+  const stride = n + 1;
+  const D = new Float64Array((n + 1) * stride).fill(1e18);
+  D[0] = 0;
+  for (let i = 1; i <= n; i++) {
+    const jLo = Math.max(1, i - w);
+    const jHi = Math.min(n, i + w);
+    for (let j = jLo; j <= jHi; j++) {
+      const cost = (s[i - 1] - t[j - 1]) ** 2;
+      const prev = Math.min(
+        D[(i - 1) * stride + j],
+        D[i       * stride + (j - 1)],
+        D[(i - 1) * stride + (j - 1)]
+      );
+      D[i * stride + j] = cost + prev;
+    }
+  }
+  return Math.sqrt(D[n * stride + n] / n);
+}
+
+// =====================================================================
+// Pattern search
+// =====================================================================
+async function runSearch() {
+  if (!S.data) return;
+
+  const qLen   = +document.getElementById('queryLen').value;
+  const fLen   = +document.getElementById('futureLen').value;
+  const k      = Math.max(1, +document.getElementById('kValue').value);
+  const bwRatio= +document.getElementById('bandwidth').value;
+  const bw     = Math.max(1, Math.ceil(qLen * bwRatio));
+
+  const prices = S.data.close;
+  const qs     = S.queryStart;
+  const qe     = qs + qLen;
+
+  if (qe + fLen > prices.length) {
+    status('err', 'クエリ窓 + 将来期間がデータ範囲を超えています');
+    return;
+  }
+
+  const btn = document.getElementById('btnSearch');
+  btn.disabled = true;
+  status('loading', 'IDTW 計算中…');
+  const prog = document.getElementById('prog');
+  const fill = document.getElementById('progFill');
+  prog.style.display = 'block'; fill.style.width = '0%';
+
+  const query    = zNorm(prices.slice(qs, qe));
+  const maxStart = prices.length - qLen - fLen;
+  const CHUNK    = 40;
+  const dists    = [];
+
+  for (let start = 0; start <= maxStart; start += CHUNK) {
+    const end = Math.min(start + CHUNK, maxStart + 1);
+    for (let i = start; i < end; i++) {
+      if (i + qLen > qs - Math.floor(qLen / 2) && i < qe + Math.floor(qLen / 2)) continue;
+      const cand = zNorm(prices.slice(i, i + qLen));
+      dists.push({ idx: i, d: dtwDist(query, cand, bw) });
+    }
+    fill.style.width = Math.round((end / (maxStart + 1)) * 100) + '%';
+    await tick();
+  }
+
+  dists.sort((a, b) => a.d - b.d);
+
+  const picked = [];
+  for (const item of dists) {
+    if (picked.length >= k) break;
+    if (picked.every(p => Math.abs(p.idx - item.idx) >= Math.floor(qLen / 2))) {
+      picked.push(item);
+    }
+  }
+
+  S.matches = picked.map((item, rank) => {
+    const pat    = Array.from(prices.slice(item.idx, item.idx + qLen));
+    const fut    = Array.from(prices.slice(item.idx + qLen, item.idx + qLen + fLen));
+    const fRet   = fut.length ? (fut.at(-1) / fut[0] - 1) * 100 : 0;
+    const maxGain = fut.length ? (Math.max(...fut) / fut[0] - 1) * 100 : 0;
+    const maxDraw = fut.length ? (Math.min(...fut) / fut[0] - 1) * 100 : 0;
+    return {
+      rank: rank + 1,
+      idx: item.idx, dist: item.d,
+      startDate: S.data.dates[item.idx],
+      endDate:   S.data.dates[item.idx + qLen - 1],
+      pat, fut, fRet, maxGain, maxDraw
+    };
+  });
+
+  prog.style.display = 'none';
+  btn.disabled = false;
+  status('ok', `${S.matches.length} 件のパターンを発見`);
+  renderResults();
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+  if (S.clusterData) assignQueryCluster();
+}
+
+// =====================================================================
+// Results rendering
+// =====================================================================
+function renderResults() {
+  const ms  = S.matches;
+  const qLen = +document.getElementById('queryLen').value;
+  const fLen = +document.getElementById('futureLen').value;
+
+  const rets   = ms.map(m => m.fRet);
+  const avg    = rets.reduce((a, b) => a + b, 0) / rets.length;
+  const win    = rets.filter(r => r > 0).length / rets.length * 100;
+  const median = [...ms.map(m => m.dist)].sort((a,b)=>a-b)[Math.floor(ms.length/2)];
+
+  const el = id => document.getElementById(id);
+  el('sAvg').textContent  = (avg >= 0 ? '+' : '') + avg.toFixed(2) + '%';
+  el('sAvg').className    = 'sum-val ' + (avg >= 0 ? 'pos' : 'neg');
+  el('sWin').textContent  = win.toFixed(0) + '%';
+  el('sDist').textContent = median.toFixed(4);
+  el('sCnt').textContent  = ms.length;
+
+  const COLORS = [
+    '#e05a5a','#f0a050','#f0d080','#56b870','#5b9bd5',
+    '#9b72cf','#e07090','#60c8c0','#c0b870','#70a8e0',
+  ];
+
+  const queryNorm = Array.from(zNorm(S.data.close.slice(S.queryStart, S.queryStart + qLen)));
+  const xLabelsPat = Array.from({length: qLen}, (_, i) => `T${i - qLen + 1}`);
+
+  if (S.charts.pat) S.charts.pat.destroy();
+  S.charts.pat = new Chart(el('patternChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: xLabelsPat,
+      datasets: [
+        ...ms.map((m, i) => ({
+          label: `#${m.rank}`, data: Array.from(zNorm(m.pat)),
+          borderColor: COLORS[i % COLORS.length] + '70', borderWidth: 1.5,
+          pointRadius: 0, tension: 0, fill: false,
+        })),
+        {
+          label: 'Query', data: queryNorm,
+          borderColor: '#c9a84c', borderWidth: 3,
+          pointRadius: 0, tension: 0, fill: false,
+        },
+      ]
+    },
+    options: mkChartOpts('Z スコア')
+  });
+
+  const xLabelsFut = Array.from({length: fLen}, (_, i) => `+${i + 1}d`);
+  const avgFut = Array.from({length: fLen}, (_, i) => {
+    const vals = ms.filter(m => m.fut.length > i).map(m => (m.fut[i] / m.fut[0] - 1) * 100);
+    return vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+  });
+
+  if (S.charts.fut) S.charts.fut.destroy();
+  S.charts.fut = new Chart(el('futureChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: xLabelsFut,
+      datasets: [
+        ...ms.map((m, i) => ({
+          label: `#${m.rank}`,
+          data: m.fut.map(v => (v / m.fut[0] - 1) * 100),
+          borderColor: COLORS[i % COLORS.length] + '55', borderWidth: 1.2,
+          pointRadius: 0, tension: 0, fill: false,
+        })),
+        {
+          label: '平均', data: avgFut,
+          borderColor: '#c9a84c', borderWidth: 2.5,
+          pointRadius: 0, tension: 0.2, fill: false,
+        },
+        {
+          label: '0%', data: Array(fLen).fill(0),
+          borderColor: '#3a3228', borderWidth: 1,
+          borderDash: [4,4], pointRadius: 0, fill: false,
+        },
+      ]
+    },
+    options: mkChartOpts('リターン (%)')
+  });
+
+  const tbody = el('matchTbody');
+  tbody.innerHTML = '';
+  ms.forEach(m => {
+    const cls = m.fRet >= 0 ? 'pos' : 'neg';
+    const tr  = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${m.rank}</td>
+      <td>${m.startDate}</td>
+      <td>${m.endDate}</td>
+      <td>${m.dist.toFixed(4)}</td>
+      <td class="${cls}">${m.fRet >= 0 ? '+' : ''}${m.fRet.toFixed(2)}%</td>
+      <td class="pos">+${m.maxGain.toFixed(2)}%</td>
+      <td class="neg">${m.maxDraw.toFixed(2)}%</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// =====================================================================
+// Helpers
+// =====================================================================
+function mkChartOpts(yLabel) {
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { mode: 'index', intersect: false }
+    },
+    scales: {
+      x: { ticks:{color:'#9a8c78',font:{size:10},maxRotation:0}, grid:{color:'rgba(58,50,40,.3)'} },
+      y: {
+        title: { display: true, text: yLabel, color:'#9a8c78', font:{size:10} },
+        ticks: { color:'#9a8c78', font:{size:10} },
+        grid:  { color:'rgba(58,50,40,.3)' }
+      }
+    }
+  };
+}
+
+function status(type, msg) {
+  const el = document.getElementById('statusMsg');
+  el.className = 'status ' + type;
+  el.textContent = msg;
+}
+
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+// =====================================================================
+// Step 3: k-medoids Clustering
+// =====================================================================
+const CLU_COLORS = [
+  '#e05a5a','#5b9bd5','#56b870','#f0d080','#9b72cf',
+  '#f0a050','#60c8c0','#e07090','#c0b870','#70a8e0',
+];
+
+async function runCluster() {
+  if (!S.data || S.mode !== 'live') {
+    cluStatus('err', 'Live モードでデータを読み込んでから実行してください');
+    return;
+  }
+
+  const base    = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
+  const ticker  = document.getElementById('ticker').value.trim().toUpperCase();
+  const period  = document.getElementById('period').value;
+  const k       = document.getElementById('cluK').value;
+  const stride  = document.getElementById('cluStride').value;
+  const future  = document.getElementById('cluFuture').value;
+  const qLen    = document.getElementById('queryLen').value;
+
+  const btn = document.getElementById('btnCluster');
+  btn.disabled = true;
+  cluStatus('loading', `計算中… (${S.data.dates.length}日 × stride=${stride}) 数十秒かかります`);
+  document.getElementById('cluProg').style.display = 'block';
+  document.getElementById('cluFill').style.width = '10%';
+
+  try {
+    const url = `${base}/api/cluster?ticker=${encodeURIComponent(ticker)}&period=${period}&k=${k}&window=${qLen}&stride=${stride}&future=${future}`;
+    document.getElementById('cluFill').style.width = '30%';
+    const res = await fetch(url);
+    document.getElementById('cluFill').style.width = '90%';
+
+    if (!res.ok) {
+      const e = await res.json();
+      throw new Error(e.error || `HTTP ${res.status}`);
+    }
+
+    S.clusterData = await res.json();
+    document.getElementById('cluFill').style.width = '100%';
+    await tick();
+
+    cluStatus('ok', `完了: ${S.clusterData.n_windows}窓 → ${S.clusterData.n_clusters}クラスタ`);
+    renderClusters();
+    document.getElementById('cluResults').style.display = 'block';
+    document.getElementById('cluResults').scrollIntoView({ behavior: 'smooth' });
+
+  } catch(e) {
+    cluStatus('err', 'エラー: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    document.getElementById('cluProg').style.display = 'none';
+  }
+}
+
+function renderClusters() {
+  const cd   = S.clusterData;
+  const qLen = parseInt(document.getElementById('queryLen').value);
+  const xLabels = Array.from({length: qLen}, (_, i) => `T${i - qLen + 1}`);
+
+  if (S.charts.cluMed) S.charts.cluMed.destroy();
+  S.charts.cluMed = new Chart(
+    document.getElementById('cluMedoidChart').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: xLabels,
+        datasets: cd.clusters.map((c, i) => ({
+          label: `C${i + 1}（${c.count}件）`,
+          data: c.medoid_norm,
+          borderColor: CLU_COLORS[i % CLU_COLORS.length],
+          borderWidth: 2.5,
+          pointRadius: 0, tension: 0, fill: false,
+        }))
+      },
+      options: mkChartOpts('Z スコア')
+    }
+  );
+
+  if (S.charts.cluRet) S.charts.cluRet.destroy();
+  S.charts.cluRet = new Chart(
+    document.getElementById('cluReturnChart').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: cd.clusters.map((_, i) => `C${i + 1}`),
+        datasets: [
+          {
+            label: '平均リターン (%)',
+            data: cd.clusters.map(c => c.avg_return),
+            backgroundColor: cd.clusters.map((c, i) =>
+              c.avg_return >= 0
+                ? CLU_COLORS[i % CLU_COLORS.length] + 'cc'
+                : '#e05a5a88'),
+            borderColor: cd.clusters.map((_, i) => CLU_COLORS[i % CLU_COLORS.length]),
+            borderWidth: 1.5,
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color:'#9a8c78', font:{size:11} }, grid:{ color:'rgba(58,50,40,.3)' } },
+          y: {
+            title: { display:true, text:'平均リターン (%)', color:'#9a8c78', font:{size:10} },
+            ticks: { color:'#9a8c78', font:{size:10} },
+            grid:  { color:'rgba(58,50,40,.3)' }
+          }
+        }
+      }
+    }
+  );
+
+  const tbody = document.getElementById('cluTbody');
+  tbody.innerHTML = '';
+  cd.clusters.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${CLU_COLORS[i % CLU_COLORS.length]};margin-right:6px;"></span>`;
+    const retCls = c.avg_return >= 0 ? 'pos' : 'neg';
+    tr.innerHTML = `
+      <td>${dot}C${i + 1}</td>
+      <td>${c.count} 件</td>
+      <td class="${retCls}">${c.avg_return >= 0 ? '+' : ''}${c.avg_return.toFixed(2)}%</td>
+      <td>${c.win_rate.toFixed(0)}%</td>
+      <td>${c.medoid_date}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  assignQueryCluster();
+}
+
+function assignQueryCluster() {
+  if (!S.clusterData || !S.data) return;
+
+  const cd      = S.clusterData;
+  const qLen    = parseInt(document.getElementById('queryLen').value);
+  const prices  = S.data.close;
+  const qs      = S.queryStart;
+
+  if (qs + qLen > prices.length) return;
+
+  const qArr = prices.slice(qs, qs + qLen);
+  const mean = qArr.reduce((a,b) => a+b, 0) / qArr.length;
+  let std = 0; qArr.forEach(v => std += (v-mean)**2); std = Math.sqrt(std/qArr.length);
+  const qNorm = std < 1e-10 ? qArr.map(() => 0) : qArr.map(v => (v-mean)/std);
+
+  const bw = Math.max(1, Math.ceil(qLen * 0.10));
+  let bestC = 0, bestD = Infinity;
+  cd.clusters.forEach((c, i) => {
+    const med = c.medoid_norm;
+    const n = qNorm.length;
+    const stride2 = n + 1;
+    const D2 = new Float64Array((n+1)*stride2).fill(1e18);
+    D2[0] = 0;
+    for (let ii = 1; ii <= n; ii++) {
+      for (let jj = Math.max(1,ii-bw); jj <= Math.min(n,ii+bw); jj++) {
+        const cost = (qNorm[ii-1] - med[jj-1])**2;
+        D2[ii*stride2+jj] = cost + Math.min(D2[(ii-1)*stride2+jj], D2[ii*stride2+(jj-1)], D2[(ii-1)*stride2+(jj-1)]);
+      }
+    }
+    const dist = Math.sqrt(D2[n*stride2+n] / n);
+    if (dist < bestD) { bestD = dist; bestC = i; }
+  });
+
+  const c = cd.clusters[bestC];
+  const color = CLU_COLORS[bestC % CLU_COLORS.length];
+  document.getElementById('cluQueryCard').style.display = 'block';
+  document.getElementById('cluQueryResult').innerHTML =
+    `<span style="color:${color};font-weight:700;">C${bestC+1}</span> に最も近い &nbsp;|&nbsp; ` +
+    `DTW 距離: ${bestD.toFixed(4)} &nbsp;|&nbsp; ` +
+    `このクラスタの平均リターン: <span class="${c.avg_return>=0?'pos':'neg'}">${c.avg_return>=0?'+':''}${c.avg_return.toFixed(2)}%</span> ` +
+    `/ 勝率 ${c.win_rate.toFixed(0)}%`;
+}
+
+function cluStatus(type, msg) {
+  const el = document.getElementById('cluStatus');
+  el.className = 'status ' + type;
+  el.textContent = msg;
+}
+
+// =====================================================================
+// Step 4: Backtest — optimal k* search
+// =====================================================================
+async function runBacktest() {
+  if (!S.data || S.mode !== 'live') {
+    btStatus('err', 'Live モードでデータを読み込んでから実行してください');
+    return;
+  }
+
+  const base   = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
+  const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+  const period = document.getElementById('period').value;
+  const k_max  = document.getElementById('btKmax').value;
+  const split  = document.getElementById('btSplit').value;
+  const qLen   = document.getElementById('queryLen').value;
+  const future = document.getElementById('futureLen').value;
+  const stride = document.getElementById('cluStride').value;
+
+  const btn = document.getElementById('btnBacktest');
+  btn.disabled = true;
+  btStatus('loading', `計算中… 数十秒かかります`);
+  document.getElementById('btProg').style.display = 'block';
+  document.getElementById('btFill').style.width = '10%';
+
+  try {
+    const url = `${base}/api/backtest?ticker=${encodeURIComponent(ticker)}&period=${period}` +
+                `&k_max=${k_max}&window=${qLen}&stride=${stride}&future=${future}&split=${split}`;
+    document.getElementById('btFill').style.width = '30%';
+    const res = await fetch(url);
+    document.getElementById('btFill').style.width = '90%';
+
+    if (!res.ok) {
+      const e = await res.json();
+      throw new Error(e.error || `HTTP ${res.status}`);
+    }
+
+    S.backtestData = await res.json();
+    document.getElementById('btFill').style.width = '100%';
+    await tick();
+
+    const bd = S.backtestData;
+    btStatus('ok', `完了: 訓練 ${bd.n_train}窓 / テスト ${bd.n_test}窓 → 最適 k*=${bd.best_k}（的中率 ${bd.best_dir_acc}%）`);
+    renderBacktest();
+    document.getElementById('btResults').style.display = 'block';
+    document.getElementById('btResults').scrollIntoView({ behavior: 'smooth' });
+
+  } catch(e) {
+    btStatus('err', 'エラー: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    document.getElementById('btProg').style.display = 'none';
+  }
+}
+
+function renderBacktest() {
+  const bd = S.backtestData;
+  const ks    = bd.results.map(r => r.k);
+  const accs  = bd.results.map(r => r.dir_acc);
+  const corrs = bd.results.map(r => r.corr);
+
+  const accCls = bd.best_dir_acc >= 50 ? 'pos' : 'neg';
+  document.getElementById('btSummary').innerHTML = `
+    <div class="sum-card"><div class="sum-lbl">最適 k*</div><div class="sum-val pos">${bd.best_k}</div></div>
+    <div class="sum-card"><div class="sum-lbl">最高 方向的中率</div><div class="sum-val ${accCls}">${bd.best_dir_acc.toFixed(1)}%</div></div>
+    <div class="sum-card"><div class="sum-lbl">訓練窓数</div><div class="sum-val neu">${bd.n_train}</div></div>
+    <div class="sum-card"><div class="sum-lbl">テスト窓数</div><div class="sum-val neu">${bd.n_test}</div></div>`;
+
+  if (S.charts.bt) S.charts.bt.destroy();
+  S.charts.bt = new Chart(
+    document.getElementById('btChart').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: ks,
+        datasets: [
+          {
+            label: '方向的中率 (%)',
+            data: accs,
+            borderColor: '#c9a84c', borderWidth: 2.5,
+            pointRadius: ks.map(k => k === bd.best_k ? 8 : 3),
+            pointBackgroundColor: ks.map(k => k === bd.best_k ? '#f0d080' : '#c9a84c'),
+            tension: 0.2, fill: false, yAxisID: 'yAcc',
+          },
+          {
+            label: '相関係数',
+            data: corrs,
+            borderColor: '#5b9bd5', borderWidth: 1.5, borderDash: [4, 3],
+            pointRadius: 2,
+            tension: 0.2, fill: false, yAxisID: 'yCorr',
+          },
+          {
+            label: '50% ライン',
+            data: Array(ks.length).fill(50),
+            borderColor: '#3a3228', borderWidth: 1, borderDash: [4, 4],
+            pointRadius: 0, fill: false, yAxisID: 'yAcc',
+          },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {
+          legend: { display: true, labels: { color: '#9a8c78', font: { size: 11 } } },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'k（近傍数）', color: '#9a8c78', font: { size: 10 } },
+            ticks: { color: '#9a8c78', font: { size: 10 } },
+            grid: { color: 'rgba(58,50,40,.3)' }
+          },
+          yAcc: {
+            type: 'linear', position: 'left',
+            title: { display: true, text: '方向的中率 (%)', color: '#c9a84c', font: { size: 10 } },
+            ticks: { color: '#9a8c78', font: { size: 10 } },
+            grid: { color: 'rgba(58,50,40,.3)' }
+          },
+          yCorr: {
+            type: 'linear', position: 'right',
+            title: { display: true, text: '相関係数', color: '#5b9bd5', font: { size: 10 } },
+            ticks: { color: '#9a8c78', font: { size: 10 } },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    }
+  );
+
+  const tbody = document.getElementById('btTbody');
+  tbody.innerHTML = '';
+  bd.results.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.style.background = r.k === bd.best_k ? 'rgba(201,168,76,0.12)' : '';
+    const accCls2 = r.dir_acc >= 50 ? 'pos' : 'neg';
+    tr.innerHTML = `
+      <td>${r.k === bd.best_k ? '★ ' : ''}${r.k}</td>
+      <td class="${accCls2}">${r.dir_acc.toFixed(1)}%</td>
+      <td>${r.corr.toFixed(4)}</td>
+      <td>${r.avg_pred_ret >= 0 ? '+' : ''}${r.avg_pred_ret.toFixed(3)}%</td>`;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('btApplyMsg').textContent =
+    `k* = ${bd.best_k}（方向的中率 ${bd.best_dir_acc.toFixed(1)}%、テスト期間: ${bd.split_date} 以降 ${bd.n_test} 窓）`;
+}
+
+function applyBestK() {
+  if (!S.backtestData) return;
+  document.getElementById('kValue').value = S.backtestData.best_k;
+  btStatus('ok', `k = ${S.backtestData.best_k} を設定しました。上の「パターン検索」ボタンを押してください。`);
+  document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
+}
+
+function btStatus(type, msg) {
+  const el = document.getElementById('btStatus');
+  el.className = 'status ' + type;
+  el.textContent = msg;
+}
+
+// =====================================================================
+// Boot
+// =====================================================================
+window.addEventListener('load', () => {
+  if (location.protocol === 'https:') {
+    document.getElementById('ghPagesNote').style.display = 'block';
+    document.getElementById('tabLive').style.opacity = '0.4';
+    document.getElementById('tabLive').style.cursor = 'not-allowed';
+    document.getElementById('tabLive').onclick = () => {
+      document.getElementById('ghPagesNote').style.display = 'block';
+      document.getElementById('ghPagesNote').scrollIntoView({ behavior: 'smooth' });
+    };
+  }
+  loadData();
+});
+</script>
+</body>
+</html>
+
