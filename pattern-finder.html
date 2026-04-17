@@ -170,7 +170,7 @@ tr:last-child td{border-bottom:none;}
   </div>
   <div id="clusterResults" style="display:none;margin-top:12px">
     <table>
-      <thead><tr><th>クラスタ</th><th>メドイド開始日</th><th>メドイド終了日</th><th>サイズ</th><th>平均リターン</th></tr></thead>
+      <thead><tr><th>クラスタ</th><th>メドイド開始日</th><th>サイズ</th><th>平均リターン</th><th>勝率</th></tr></thead>
       <tbody id="clusterTbody"></tbody>
     </table>
   </div>
@@ -476,27 +476,22 @@ async function runSearch() {
 
 // ===================== Step 3: k-medoids (Live only) =====================
 async function runCluster() {
-  if (S.mode!=='live'||!S.matches.length) return;
+  if (S.mode!=='live'||!S.data) return;
   const base=document.getElementById('serverUrl').value.trim().replace(/\/$/,'');
+  const ticker=document.getElementById('ticker').value.trim().toUpperCase();
   const kc=+document.getElementById('clusterK').value;
+  const qLen=+document.getElementById('queryLen').value;
   const btn=document.getElementById('btnCluster'); btn.disabled=true;
   const cSt=document.getElementById('clusterStatus');
   cSt.className='status loading'; cSt.textContent='クラスタリング中…';
   try {
-    const res=await fetch(`${base}/api/cluster`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({patterns:S.matches.map(m=>m.pat),k:kc})
-    });
+    const res=await fetch(`${base}/api/cluster?ticker=${encodeURIComponent(ticker)}&k=${kc}&window=${qLen}`);
     if (!res.ok){const e=await res.json();throw new Error(e.error||`HTTP ${res.status}`);}
     const data=await res.json();
     const tbody=document.getElementById('clusterTbody'); tbody.innerHTML='';
-    const {labels,medoids}=data;
-    for (let c=0;c<medoids.length;c++) {
-      const med=S.matches[medoids[c]];
-      const members=S.matches.filter((_,i)=>labels[i]===c);
-      const avg=members.reduce((s,m)=>s+m.fRet,0)/members.length;
+    for (const c of data.clusters) {
       const tr=document.createElement('tr');
-      tr.innerHTML=`<td>${c+1}</td><td>${med?.startDate??'—'}</td><td>${med?.endDate??'—'}</td><td>${members.length}</td><td class="${avg>=0?'pos':'neg'}">${avg>=0?'+':''}${avg.toFixed(2)}%</td>`;
+      tr.innerHTML=`<td>${c.id+1}</td><td>${c.medoid_date}</td><td>${c.count}</td><td class="${c.avg_return>=0?'pos':'neg'}">${c.avg_return>=0?'+':''}${c.avg_return.toFixed(2)}%</td><td>${c.win_rate.toFixed(1)}%</td>`;
       tbody.appendChild(tr);
     }
     document.getElementById('clusterResults').style.display='block';
