@@ -210,7 +210,7 @@ tr:last-child td{border-bottom:none;}
 <div class="card">
   <div class="card-title">Step 4: バックテスト — 最適 k* 探索</div>
   <p style="font-size:.77rem;color:var(--text2);margin-bottom:12px;">
-    データを訓練/テストに分割し、k=1〜k_max で方向的中率を計測して最適 k* を推奨します。<strong>Live モードのみ対応</strong>。
+    データを訓練/テストに分割し、k=1〜k_max で方向的中率を計測して最適 k* を推奨します。<strong>デモ・Live 両モード対応</strong>。
   </p>
   <div class="grid grid-4">
     <div class="ctrl">
@@ -218,12 +218,19 @@ tr:last-child td{border-bottom:none;}
       <input type="number" id="btKmax" value="20" min="2" max="30">
     </div>
     <div class="ctrl">
-      <label>訓練 / テスト 分割</label>
+      <label>訓練 / テスト 分割（単純分割用）</label>
       <select id="btSplit">
         <option value="0.6">60% / 40%</option>
         <option value="0.7" selected>70% / 30%</option>
         <option value="0.8">80% / 20%</option>
       </select>
+    </div>
+    <div class="ctrl" style="grid-column:span 2;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--accent);font-size:.82rem;font-weight:600;">
+        <input type="checkbox" id="btWalkForward" checked style="width:auto;accent-color:var(--accent);transform:scale(1.2);">
+        ウォークフォワード検証を使用する（推奨）
+      </label>
+      <span style="font-size:.7rem;color:var(--text2);margin-top:2px;padding-left:24px;">複数期間で繰り返し検証し、信頼性・安定性を評価します</span>
     </div>
   </div>
   <div class="row">
@@ -251,6 +258,29 @@ tr:last-child td{border-bottom:none;}
     <div class="card-title">k* をパターン検索に適用</div>
     <p style="font-size:.8rem;color:var(--text2);margin-bottom:10px;" id="btApplyMsg"></p>
     <button class="btn btn-go" onclick="applyBestK()">この k* で検索する</button>
+  </div>
+</div>
+
+<!-- Walk-forward results -->
+<div id="wfResults" style="display:none">
+  <div class="card">
+    <div class="card-title">ウォークフォワード検証 — 統計サマリー</div>
+    <div id="wfWarnings"></div>
+    <div class="sum-grid" id="wfSummary"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">ステップ別 検証結果</div>
+    <table>
+      <thead>
+        <tr><th>ステップ</th><th>訓練期間</th><th>テスト期間</th><th>最適 k*</th><th>方向的中率</th><th>平均リターン</th><th>テスト窓数</th></tr>
+      </thead>
+      <tbody id="wfTbody"></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-title">k* をパターン検索に適用</div>
+    <p style="font-size:.8rem;color:var(--text2);margin-bottom:10px;" id="wfApplyMsg"></p>
+    <button class="btn btn-go" onclick="applyWFBestK()">この k* で検索する</button>
   </div>
 </div>
 
@@ -293,7 +323,6 @@ tr:last-child td{border-bottom:none;}
     ステップ 3 で k-medoids クラスタリング、ステップ 4 のバックテストで最適 k* を自動決定。「k* を適用」ボタンで近傍数を最適値に設定できます。
   </div>
 </div>
-
 <script>
 // =====================================================================
 // State
@@ -305,6 +334,7 @@ const S = {
   matches: [],
   clusterData: null,
   backtestData: null,
+  wfData: null,
   charts: {}
 };
 
@@ -393,14 +423,14 @@ async function loadData() {
     document.getElementById('btnSearch').disabled = false;
     document.getElementById('btnLatest').disabled = false;
     document.getElementById('results').style.display = 'none';
-
     const canCluster = S.mode === 'live';
     document.getElementById('btnCluster').disabled = !canCluster;
     cluStatus(canCluster ? 'ok' : 'neu', canCluster ? '実行できます' : 'Live モードのみ対応');
     document.getElementById('cluResults').style.display = 'none';
-    document.getElementById('btnBacktest').disabled = !canCluster;
-    btStatus(canCluster ? 'ok' : 'neu', canCluster ? '実行できます' : 'Live モードのみ対応');
+    document.getElementById('btnBacktest').disabled = false;
+    btStatus('ok', '実行できます');
     document.getElementById('btResults').style.display = 'none';
+    document.getElementById('wfResults').style.display = 'none';
   } catch(e) {
     status('err', 'エラー: ' + e.message);
   } finally {
@@ -595,7 +625,6 @@ async function runSearch() {
   document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
   if (S.clusterData) assignQueryCluster();
 }
-
 // =====================================================================
 // Results rendering
 // =====================================================================
@@ -903,52 +932,219 @@ function cluStatus(type, msg) {
   el.className = 'status ' + type;
   el.textContent = msg;
 }
+// =====================================================================
+// Step 4: Backtest
+// =====================================================================
 
-// =====================================================================
-// Step 4: Backtest — optimal k* search
-// =====================================================================
-async function runBacktest() {
-  if (!S.data || S.mode !== 'live') {
-    btStatus('err', 'Live モードでデータを読み込んでから実行してください');
-    return;
+function pearsonCorr(a, b) {
+  const n = a.length;
+  if (n < 2) return 0;
+  const ma = a.reduce((s,v) => s+v, 0) / n;
+  const mb = b.reduce((s,v) => s+v, 0) / n;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < n; i++) {
+    num += (a[i]-ma)*(b[i]-mb); da += (a[i]-ma)**2; db += (b[i]-mb)**2;
+  }
+  return da*db < 1e-20 ? 0 : num / Math.sqrt(da*db);
+}
+
+function buildWindowData(prices, win, stride, future) {
+  const n = prices.length;
+  const starts  = [];
+  for (let s = 0; s + win + future <= n; s += stride) starts.push(s);
+  const norms   = starts.map(s => zNorm(prices.slice(s, s + win)));
+  const futRets = starts.map(s => (prices[s + win + future - 1] / prices[s + win] - 1) * 100);
+  return { starts, norms, futRets };
+}
+
+async function computeWalkForward(prices, dates, win, stride, future, k_max, bw) {
+  const { starts, norms, futRets } = buildWindowData(prices, win, stride, future);
+  const m = starts.length;
+  if (m < 20) throw new Error(`窓数(${m})が少なすぎます。期間を長くするか stride を小さくしてください`);
+
+  const trainCount = Math.floor(m * 0.5);
+  const nSteps     = Math.max(3, Math.min(5, Math.floor((m - trainCount) / 8)));
+  const testCount  = Math.floor((m - trainCount) / nSteps);
+  if (testCount < 5) throw new Error(`テスト窓数(${testCount})が少なすぎます`);
+
+  const fill = document.getElementById('btFill');
+  let totalDone = 0;
+  const totalPairs = nSteps * trainCount * testCount;
+
+  const steps = [];
+  for (let step = 0; step < nSteps; step++) {
+    const offset    = step * testCount;
+    const trainIdxs = Array.from({length: trainCount}, (_, i) => offset + i);
+    const testIdxs  = Array.from({length: testCount},  (_, i) => offset + trainCount + i)
+                        .filter(i => i < m);
+    // 定義④: 部分窓（テスト窓サイズ未満）またはサンプル不足（<5）はスキップ
+    if (testIdxs.length < testCount || testIdxs.length < 5) continue;
+
+    const D = [];
+    for (let ti = 0; ti < testIdxs.length; ti++) {
+      const row = [];
+      for (let ri = 0; ri < trainIdxs.length; ri++) {
+        row.push(dtwDist(norms[testIdxs[ti]], norms[trainIdxs[ri]], bw));
+        totalDone++;
+      }
+      D.push(row);
+      if (ti % 4 === 0) {
+        fill.style.width = Math.round(Math.min(totalDone / totalPairs * 95, 95)) + '%';
+        await tick();
+      }
+    }
+
+    const sortedD    = D.map(row => row.map((d,j)=>({d,j})).sort((a,b)=>a.d-b.d).map(x=>x.j));
+    const trainRets  = trainIdxs.map(i => futRets[i]);
+    const testActual = testIdxs.map(i => futRets[i]);
+
+    let bestK = 1, bestAcc = -Infinity;
+    for (let k = 1; k <= k_max; k++) {
+      const preds = sortedD.map(s => s.slice(0,k).reduce((a,j) => a+trainRets[j], 0) / k);
+      // 定義②: 0%リターンは不正解、定義③: 同率なら最小kを採用（strict >）
+      const acc   = preds.filter((p,i) => p !== 0 && testActual[i] !== 0 && Math.sign(p) === Math.sign(testActual[i])).length
+                    / testIdxs.length * 100;
+      if (acc > bestAcc) { bestAcc = acc; bestK = k; }
+    }
+    // 定義①: 平均リターンは算術平均（単純リターン%）
+    const bestPreds = sortedD.map(s => s.slice(0,bestK).reduce((a,j) => a+trainRets[j], 0) / bestK);
+    const avgRet    = bestPreds.reduce((a,b) => a+b, 0) / bestPreds.length;
+
+    steps.push({
+      step:        step + 1,
+      trainPeriod: `${dates[starts[trainIdxs[0]]]} 〜 ${dates[starts[trainIdxs.at(-1)]]}`,
+      testPeriod:  `${dates[starts[testIdxs[0]]]}  〜 ${dates[starts[testIdxs.at(-1)]]}`,
+      n_test:      testIdxs.length,
+      best_k:      bestK,
+      dir_acc:     Math.round(bestAcc * 10) / 10,
+      avg_ret:     Math.round(avgRet  * 1000) / 1000,
+    });
   }
 
-  const base   = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
-  const ticker = document.getElementById('ticker').value.trim().toUpperCase();
-  const period = document.getElementById('period').value;
-  const k_max  = document.getElementById('btKmax').value;
-  const split  = document.getElementById('btSplit').value;
-  const qLen   = document.getElementById('queryLen').value;
-  const future = document.getElementById('futureLen').value;
-  const stride = document.getElementById('cluStride').value;
+  // 定義④: 有効ステップが3未満はデータ不足エラー
+  if (steps.length < 3) throw new Error('データ不足：ウォークフォワードには最低3期間分のデータが必要です');
+
+  const accs    = steps.map(s => s.dir_acc);
+  const meanAcc = accs.reduce((a,b) => a+b, 0) / accs.length;
+  const stdAcc  = Math.sqrt(accs.reduce((a,b) => a + (b-meanAcc)**2, 0) / accs.length);
+  const kCounts = {};
+  steps.forEach(s => { kCounts[s.best_k] = (kCounts[s.best_k] || 0) + 1; });
+  const consensusK = parseInt(Object.entries(kCounts).sort((a,b) => b[1]-a[1])[0][0]);
+  const stability  = stdAcc < 5  ? { text: '安定（σ < 5%）',        cls: 'ok'      }
+                   : stdAcc < 10 ? { text: 'やや不安定（σ 5〜10%）', cls: 'loading' }
+                   :               { text: '不安定（σ ≥ 10%）',      cls: 'err'     };
+
+  return { steps, meanAcc, stdAcc,
+           minAcc: Math.min(...accs), maxAcc: Math.max(...accs),
+           consensusK, stability };
+}
+
+async function computeSimpleSplit(prices, dates, win, stride, future, k_max, bw, split) {
+  const { starts, norms, futRets } = buildWindowData(prices, win, stride, future);
+  const m        = starts.length;
+  const splitIdx = Math.floor(m * split);
+  const trainIdxs = Array.from({length: splitIdx},     (_, i) => i);
+  const testIdxs  = Array.from({length: m - splitIdx}, (_, i) => splitIdx + i);
+
+  if (trainIdxs.length < k_max) throw new Error(`訓練窓数(${trainIdxs.length})が k_max(${k_max})より少ないです`);
+  if (testIdxs.length  < 5)     throw new Error(`テスト窓数(${testIdxs.length})が少なすぎます`);
+
+  const fill = document.getElementById('btFill');
+  const D = [];
+  for (let ti = 0; ti < testIdxs.length; ti++) {
+    const row = [];
+    for (let ri = 0; ri < trainIdxs.length; ri++)
+      row.push(dtwDist(norms[testIdxs[ti]], norms[trainIdxs[ri]], bw));
+    D.push(row);
+    if (ti % 5 === 0) { fill.style.width = Math.round(ti / testIdxs.length * 90) + '%'; await tick(); }
+  }
+
+  const sortedD    = D.map(row => row.map((d,j)=>({d,j})).sort((a,b)=>a.d-b.d).map(x=>x.j));
+  const trainRets  = trainIdxs.map(i => futRets[i]);
+  const testActual = testIdxs.map(i => futRets[i]);
+
+  let bestK = 1, bestAcc = -Infinity;
+  const results = [];
+  for (let k = 1; k <= k_max; k++) {
+    const preds = sortedD.map(s => s.slice(0,k).reduce((a,j) => a+trainRets[j], 0) / k);
+    // 定義②: 0%リターンは不正解、定義③: 同率なら最小kを採用（strict >）
+    const acc   = preds.filter((p,i) => p !== 0 && testActual[i] !== 0 && Math.sign(p) === Math.sign(testActual[i])).length
+                  / testIdxs.length * 100;
+    const corr  = pearsonCorr(preds, testActual);
+    results.push({ k, dir_acc: Math.round(acc*10)/10, corr: Math.round(corr*10000)/10000,
+                   avg_pred_ret: Math.round(preds.reduce((a,b)=>a+b,0)/preds.length*1000)/1000 });
+    if (acc > bestAcc) { bestAcc = acc; bestK = k; }
+  }
+  return { ticker: S.data.ticker, n_train: trainIdxs.length, n_test: testIdxs.length,
+           split_date: dates[starts[splitIdx]] ?? dates.at(-1),
+           results, best_k: bestK, best_dir_acc: Math.round(bestAcc*10)/10 };
+}
+
+async function runBacktest() {
+  if (!S.data) { btStatus('err', 'データを読み込んでから実行してください'); return; }
+
+  const useWF  = document.getElementById('btWalkForward').checked;
+  const k_max  = Math.max(2, Math.min(30, parseInt(document.getElementById('btKmax').value)));
+  const split  = parseFloat(document.getElementById('btSplit').value);
+  const win    = parseInt(document.getElementById('queryLen').value);
+  const future = parseInt(document.getElementById('futureLen').value);
+  const stride = parseInt(document.getElementById('cluStride').value);
+  const bwRatio= parseFloat(document.getElementById('bandwidth').value);
+  const bw     = Math.max(1, Math.ceil(win * bwRatio));
 
   const btn = document.getElementById('btnBacktest');
   btn.disabled = true;
-  btStatus('loading', `計算中… 数十秒かかります`);
+  btStatus('loading', '計算中… しばらくお待ちください');
   document.getElementById('btProg').style.display = 'block';
-  document.getElementById('btFill').style.width = '10%';
+  document.getElementById('btFill').style.width = '5%';
+  document.getElementById('btResults').style.display = 'none';
+  document.getElementById('wfResults').style.display = 'none';
 
   try {
-    const url = `${base}/api/backtest?ticker=${encodeURIComponent(ticker)}&period=${period}` +
-                `&k_max=${k_max}&window=${qLen}&stride=${stride}&future=${future}&split=${split}`;
-    document.getElementById('btFill').style.width = '30%';
-    const res = await fetch(url);
-    document.getElementById('btFill').style.width = '90%';
+    const prices = S.data.close;
+    const dates  = S.data.dates;
 
-    if (!res.ok) {
-      const e = await res.json();
-      throw new Error(e.error || `HTTP ${res.status}`);
+    if (useWF) {
+      S.wfData = await computeWalkForward(prices, dates, win, stride, future, k_max, bw);
+      document.getElementById('btFill').style.width = '100%';
+      await tick();
+      const wd = S.wfData;
+      btStatus('ok',
+        `WF完了 ${wd.steps.length}ステップ | コンセンサス k*=${wd.consensusK} | ` +
+        `平均的中率 ${wd.meanAcc.toFixed(1)}% ± ${wd.stdAcc.toFixed(1)}%`);
+      renderWalkForward();
+      document.getElementById('wfResults').style.display = 'block';
+      document.getElementById('wfResults').scrollIntoView({ behavior: 'smooth' });
+
+    } else if (S.mode === 'live') {
+      const base   = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
+      const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+      const period = document.getElementById('period').value;
+      const url    = `${base}/api/backtest?ticker=${encodeURIComponent(ticker)}&period=${period}` +
+                     `&k_max=${k_max}&window=${win}&stride=${stride}&future=${future}&split=${split}`;
+      document.getElementById('btFill').style.width = '40%';
+      const res = await fetch(url);
+      document.getElementById('btFill').style.width = '90%';
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || `HTTP ${res.status}`); }
+      S.backtestData = await res.json();
+      document.getElementById('btFill').style.width = '100%';
+      await tick();
+      const bd = S.backtestData;
+      btStatus('ok', `完了: 訓練 ${bd.n_train}窓 / テスト ${bd.n_test}窓 → 最適 k*=${bd.best_k}（的中率 ${bd.best_dir_acc}%）`);
+      renderBacktest();
+      document.getElementById('btResults').style.display = 'block';
+      document.getElementById('btResults').scrollIntoView({ behavior: 'smooth' });
+
+    } else {
+      S.backtestData = await computeSimpleSplit(prices, dates, win, stride, future, k_max, bw, split);
+      document.getElementById('btFill').style.width = '100%';
+      await tick();
+      const bd = S.backtestData;
+      btStatus('ok', `完了: 訓練 ${bd.n_train}窓 / テスト ${bd.n_test}窓 → 最適 k*=${bd.best_k}（的中率 ${bd.best_dir_acc}%）`);
+      renderBacktest();
+      document.getElementById('btResults').style.display = 'block';
+      document.getElementById('btResults').scrollIntoView({ behavior: 'smooth' });
     }
-
-    S.backtestData = await res.json();
-    document.getElementById('btFill').style.width = '100%';
-    await tick();
-
-    const bd = S.backtestData;
-    btStatus('ok', `完了: 訓練 ${bd.n_train}窓 / テスト ${bd.n_test}窓 → 最適 k*=${bd.best_k}（的中率 ${bd.best_dir_acc}%）`);
-    renderBacktest();
-    document.getElementById('btResults').style.display = 'block';
-    document.getElementById('btResults').scrollIntoView({ behavior: 'smooth' });
 
   } catch(e) {
     btStatus('err', 'エラー: ' + e.message);
@@ -959,8 +1155,8 @@ async function runBacktest() {
 }
 
 function renderBacktest() {
-  const bd = S.backtestData;
-  const ks    = bd.results.map(r => r.k);
+  const bd  = S.backtestData;
+  const ks  = bd.results.map(r => r.k);
   const accs  = bd.results.map(r => r.dir_acc);
   const corrs = bd.results.map(r => r.corr);
 
@@ -972,86 +1168,116 @@ function renderBacktest() {
     <div class="sum-card"><div class="sum-lbl">テスト窓数</div><div class="sum-val neu">${bd.n_test}</div></div>`;
 
   if (S.charts.bt) S.charts.bt.destroy();
-  S.charts.bt = new Chart(
-    document.getElementById('btChart').getContext('2d'), {
-      type: 'line',
-      data: {
-        labels: ks,
-        datasets: [
-          {
-            label: '方向的中率 (%)',
-            data: accs,
-            borderColor: '#c9a84c', borderWidth: 2.5,
-            pointRadius: ks.map(k => k === bd.best_k ? 8 : 3),
-            pointBackgroundColor: ks.map(k => k === bd.best_k ? '#f0d080' : '#c9a84c'),
-            tension: 0.2, fill: false, yAxisID: 'yAcc',
-          },
-          {
-            label: '相関係数',
-            data: corrs,
-            borderColor: '#5b9bd5', borderWidth: 1.5, borderDash: [4, 3],
-            pointRadius: 2,
-            tension: 0.2, fill: false, yAxisID: 'yCorr',
-          },
-          {
-            label: '50% ライン',
-            data: Array(ks.length).fill(50),
-            borderColor: '#3a3228', borderWidth: 1, borderDash: [4, 4],
-            pointRadius: 0, fill: false, yAxisID: 'yAcc',
-          },
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        plugins: {
-          legend: { display: true, labels: { color: '#9a8c78', font: { size: 11 } } },
-          tooltip: { mode: 'index', intersect: false }
-        },
-        scales: {
-          x: {
-            title: { display: true, text: 'k（近傍数）', color: '#9a8c78', font: { size: 10 } },
-            ticks: { color: '#9a8c78', font: { size: 10 } },
-            grid: { color: 'rgba(58,50,40,.3)' }
-          },
-          yAcc: {
-            type: 'linear', position: 'left',
-            title: { display: true, text: '方向的中率 (%)', color: '#c9a84c', font: { size: 10 } },
-            ticks: { color: '#9a8c78', font: { size: 10 } },
-            grid: { color: 'rgba(58,50,40,.3)' }
-          },
-          yCorr: {
-            type: 'linear', position: 'right',
-            title: { display: true, text: '相関係数', color: '#5b9bd5', font: { size: 10 } },
-            ticks: { color: '#9a8c78', font: { size: 10 } },
-            grid: { drawOnChartArea: false }
-          }
-        }
+  S.charts.bt = new Chart(document.getElementById('btChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: ks,
+      datasets: [
+        { label: '方向的中率 (%)', data: accs,
+          borderColor: '#c9a84c', borderWidth: 2.5,
+          pointRadius: ks.map(k => k === bd.best_k ? 8 : 3),
+          pointBackgroundColor: ks.map(k => k === bd.best_k ? '#f0d080' : '#c9a84c'),
+          tension: 0.2, fill: false, yAxisID: 'yAcc' },
+        { label: '相関係数', data: corrs,
+          borderColor: '#5b9bd5', borderWidth: 1.5, borderDash: [4,3],
+          pointRadius: 2, tension: 0.2, fill: false, yAxisID: 'yCorr' },
+        { label: '50% ライン', data: Array(ks.length).fill(50),
+          borderColor: '#3a3228', borderWidth: 1, borderDash: [4,4],
+          pointRadius: 0, fill: false, yAxisID: 'yAcc' },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: true, labels: { color:'#9a8c78', font:{size:11} } },
+                 tooltip: { mode:'index', intersect:false } },
+      scales: {
+        x: { title:{display:true,text:'k（近傍数）',color:'#9a8c78',font:{size:10}},
+             ticks:{color:'#9a8c78',font:{size:10}}, grid:{color:'rgba(58,50,40,.3)'} },
+        yAcc:  { type:'linear', position:'left',
+                 title:{display:true,text:'方向的中率 (%)',color:'#c9a84c',font:{size:10}},
+                 ticks:{color:'#9a8c78',font:{size:10}}, grid:{color:'rgba(58,50,40,.3)'} },
+        yCorr: { type:'linear', position:'right',
+                 title:{display:true,text:'相関係数',color:'#5b9bd5',font:{size:10}},
+                 ticks:{color:'#9a8c78',font:{size:10}}, grid:{drawOnChartArea:false} },
       }
     }
-  );
+  });
 
   const tbody = document.getElementById('btTbody');
   tbody.innerHTML = '';
   bd.results.forEach(r => {
     const tr = document.createElement('tr');
     tr.style.background = r.k === bd.best_k ? 'rgba(201,168,76,0.12)' : '';
-    const accCls2 = r.dir_acc >= 50 ? 'pos' : 'neg';
-    tr.innerHTML = `
-      <td>${r.k === bd.best_k ? '★ ' : ''}${r.k}</td>
-      <td class="${accCls2}">${r.dir_acc.toFixed(1)}%</td>
+    const ac = r.dir_acc >= 50 ? 'pos' : 'neg';
+    tr.innerHTML = `<td>${r.k === bd.best_k ? '★ ' : ''}${r.k}</td>
+      <td class="${ac}">${r.dir_acc.toFixed(1)}%</td>
       <td>${r.corr.toFixed(4)}</td>
       <td>${r.avg_pred_ret >= 0 ? '+' : ''}${r.avg_pred_ret.toFixed(3)}%</td>`;
     tbody.appendChild(tr);
   });
-
   document.getElementById('btApplyMsg').textContent =
-    `k* = ${bd.best_k}（方向的中率 ${bd.best_dir_acc.toFixed(1)}%、テスト期間: ${bd.split_date} 以降 ${bd.n_test} 窓）`;
+    `k* = ${bd.best_k}（的中率 ${bd.best_dir_acc.toFixed(1)}%、テスト期間: ${bd.split_date} 以降 ${bd.n_test} 窓）`;
+}
+
+function renderWalkForward() {
+  const { steps, meanAcc, stdAcc, minAcc, maxAcc, consensusK, stability } = S.wfData;
+
+  const failedSteps = steps.filter(s => s.dir_acc < 50).length;
+  const warnings = [];
+  if (failedSteps > steps.length / 2)
+    warnings.push({ type:'err',
+      msg:`⚠️ ${failedSteps}/${steps.length} ステップで方向的中率が50%未満です。このシグナルの信頼性は低い可能性があります。` });
+  steps.forEach(s => {
+    if (s.n_test < 10)
+      warnings.push({ type:'loading', msg:`⚠️ ステップ ${s.step}: テスト窓数 ${s.n_test} 件（サンプル不足）` });
+  });
+  document.getElementById('wfWarnings').innerHTML = warnings.map(w =>
+    `<div style="border-left:3px solid var(--${w.type==='err'?'red':'accent'});background:var(--surface2);` +
+    `padding:8px 12px;border-radius:4px;font-size:.76rem;margin-bottom:8px;` +
+    `color:var(--${w.type==='err'?'red':'accent'})">${w.msg}</div>`
+  ).join('');
+
+  const ac = meanAcc >= 50 ? 'pos' : 'neg';
+  document.getElementById('wfSummary').innerHTML = `
+    <div class="sum-card"><div class="sum-lbl">コンセンサス k*</div><div class="sum-val pos">${consensusK}</div></div>
+    <div class="sum-card"><div class="sum-lbl">平均 方向的中率</div><div class="sum-val ${ac}">${meanAcc.toFixed(1)}%</div></div>
+    <div class="sum-card"><div class="sum-lbl">標準偏差</div><div class="sum-val neu">± ${stdAcc.toFixed(1)}%</div></div>
+    <div class="sum-card"><div class="sum-lbl">安定性</div>
+      <div class="sum-val status ${stability.cls}" style="font-size:.78rem;font-weight:700">${stability.text}</div></div>`;
+
+  const tbody = document.getElementById('wfTbody');
+  tbody.innerHTML = '';
+  steps.forEach(s => {
+    const tr = document.createElement('tr');
+    const ac2 = s.dir_acc >= 50 ? 'pos' : 'neg';
+    tr.innerHTML = `
+      <td>${s.step}</td>
+      <td style="font-size:.71rem">${s.trainPeriod}</td>
+      <td style="font-size:.71rem">${s.testPeriod}</td>
+      <td class="pos" style="font-weight:700">${s.best_k}</td>
+      <td class="${ac2}">${s.dir_acc.toFixed(1)}%</td>
+      <td class="${s.avg_ret>=0?'pos':'neg'}">${s.avg_ret>=0?'+':''}${s.avg_ret.toFixed(3)}%</td>
+      <td>${s.n_test}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('wfApplyMsg').textContent =
+    `コンセンサス k* = ${consensusK}（${steps.length}ステップ中の最頻値 ` +
+    `| 平均的中率 ${meanAcc.toFixed(1)}% ± ${stdAcc.toFixed(1)}% ` +
+    `| 範囲 ${minAcc.toFixed(1)}〜${maxAcc.toFixed(1)}%）`;
 }
 
 function applyBestK() {
   if (!S.backtestData) return;
   document.getElementById('kValue').value = S.backtestData.best_k;
   btStatus('ok', `k = ${S.backtestData.best_k} を設定しました。上の「パターン検索」ボタンを押してください。`);
+  document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
+}
+
+function applyWFBestK() {
+  if (!S.wfData) return;
+  document.getElementById('kValue').value = S.wfData.consensusK;
+  btStatus('ok', `k = ${S.wfData.consensusK} を設定しました。上の「パターン検索」ボタンを押してください。`);
   document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -1079,4 +1305,3 @@ window.addEventListener('load', () => {
 </script>
 </body>
 </html>
-
