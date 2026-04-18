@@ -552,14 +552,18 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw) {
   const testSize =Math.floor(N*0.2);
   const stepSize =testSize; // 重複なし
 
-  // 有効なウィンドウを生成（テスト窓がtestSize未満になるものはスキップ）
+  // 拡張訓練ウィンドウ：訓練は常に0から始まり、テスト窓がスライドする
+  // W1: train[0,50%), test[50%,70%)
+  // W2: train[0,70%), test[70%,90%)
+  // W3: train[0,90%), test[90%,100%) ← 最終窓は短くてもOK
   const windows=[];
   for (let s=0;;s++) {
-    const trainStart=s*stepSize;
-    const trainEnd  =trainStart+trainSize;
+    const trainStart=0;
+    const trainEnd  =trainSize+s*testSize; // 訓練窓が拡張
     const testStart =trainEnd;
-    const testEnd   =testStart+testSize;
-    if (testEnd>N) break; // テスト窓がtestSize未満 → スキップして終了
+    const testEnd   =Math.min(testStart+testSize,N);
+    if(testStart>=N) break;
+    if(testEnd-testStart<qLen+fLen) break; // クエリ1件も取れない → 終了
     windows.push({trainStart,trainEnd,testStart,testEnd});
   }
   if (windows.length<3)
