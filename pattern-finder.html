@@ -188,16 +188,38 @@ tr:last-child td{border-bottom:none;}
     <span class="status" id="btStatus"></span>
   </div>
   <div id="btResults" style="display:none;margin-top:14px">
+    <!-- サマリーカード -->
     <div class="bt-grid">
-      <div class="bt-card"><div class="bt-lbl">最適 k*</div><div class="bt-val" id="btKstar">—</div></div>
-      <div class="bt-card"><div class="bt-lbl">方向的中率</div><div class="bt-val" id="btAcc">—</div></div>
+      <div class="bt-card"><div class="bt-lbl">コンセンサス k*</div><div class="bt-val" id="btKstar">—</div></div>
+      <div class="bt-card"><div class="bt-lbl">方向的中率（平均）</div><div class="bt-val" id="btAcc">—</div></div>
+      <div class="bt-card"><div class="bt-lbl">標準偏差</div><div class="bt-val" id="btStd">—</div></div>
       <div class="bt-card"><div class="bt-lbl">有効ステップ数</div><div class="bt-val" id="btSteps">—</div></div>
-      <div class="bt-card"><div class="bt-lbl">安定性スコア</div><div class="bt-val" id="btStab">—</div></div>
     </div>
-    <div id="btWarn" class="warn-box" style="display:none"></div>
-    <div style="margin-top:12px">
+    <!-- 統計サマリー -->
+    <div id="btStatBox" style="background:var(--surface2);border-radius:8px;padding:12px;margin-top:10px;display:none">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:8px">
+        <div><div class="sum-lbl">平均</div><div class="sum-val" id="btMean">—</div></div>
+        <div><div class="sum-lbl">標準偏差</div><div class="sum-val" id="btStdFull">—</div></div>
+        <div><div class="sum-lbl">最小</div><div class="sum-val" id="btMin">—</div></div>
+        <div><div class="sum-lbl">最大</div><div class="sum-val" id="btMax">—</div></div>
+      </div>
+      <div id="btStabilityComment" style="font-size:.76rem;color:var(--text2);margin-top:4px"></div>
+    </div>
+    <!-- 警告 -->
+    <div id="btWarnError" class="warn-box" style="display:none;border-left-color:var(--red);color:var(--red)"></div>
+    <div id="btWarnSample" class="warn-box" style="display:none"></div>
+    <!-- ウォークフォワード per-step テーブル -->
+    <div id="btStepSection" style="display:none;margin-top:12px">
+      <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">ウォークフォワード詳細</div>
       <table>
-        <thead><tr><th>k</th><th>有効ステップ</th><th>平均方向的中率</th><th>安定性</th></tr></thead>
+        <thead><tr><th>ステップ</th><th>訓練期間</th><th>テスト期間</th><th>最適 k*</th><th>方向的中率</th><th>平均リターン</th><th>サンプル数</th></tr></thead>
+        <tbody id="btStepTbody"></tbody>
+      </table>
+    </div>
+    <!-- 単純分割 k テーブル -->
+    <div id="btKSection" style="display:none;margin-top:12px">
+      <table>
+        <thead><tr><th>k</th><th>方向的中率</th><th>サンプル数</th></tr></thead>
         <tbody id="btTbody"></tbody>
       </table>
     </div>
@@ -210,7 +232,7 @@ tr:last-child td{border-bottom:none;}
   <strong>シャープレシオ</strong>: 平均リターン / 標準偏差 × √(252/fLen)（リスクフリーレート = 0）。<br>
   <strong>最大ドローダウン</strong>: 将来期間中の最大ピーク比下落率（各マッチの平均）。<br>
   <strong>t 検定</strong>: H₀: 平均リターン = 0（両側検定）。<strong>二項検定</strong>: H₁: 勝率 &gt; 50%（正規近似）。 * p&lt;0.05 &nbsp;** p&lt;0.01 &nbsp;*** p&lt;0.001<br>
-  <strong>バックテスト</strong>: ウォークフォワード（訓練 50%、均等テスト分割 3〜5 ステップ）で最適 k* を決定。
+  <strong>バックテスト</strong>: ウォークフォワード（訓練 50%・テスト 20%・ステップ 20% のローリング窓、最低 3 ステップ）で各ステップの最適 k* を選定し、コンセンサス k* を採用。サンプル &lt; 5 の k は除外。同率は最小 k を採用。
 </div>
 
 <script>
@@ -525,36 +547,52 @@ async function runBacktest() {
 }
 
 async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw) {
-  const trainEnd=Math.floor(prices.length*0.5);
-  const maxTestStart=prices.length-trainEnd-qLen-fLen;
-  if (maxTestStart<0) throw new Error('データ不足：テスト期間が短すぎます');
-  const numSteps=Math.min(5,Math.max(3,Math.floor(maxTestStart/Math.max(qLen,5))));
-  const stepSize=Math.floor((maxTestStart+1)/numSteps);
+  const N=prices.length;
+  const trainSize=Math.floor(N*0.5);
+  const testSize =Math.floor(N*0.2);
+  const stepSize =testSize; // 重複なし
+
+  // 有効なウィンドウを生成（テスト窓がtestSize未満になるものはスキップ）
+  const windows=[];
+  for (let s=0;;s++) {
+    const trainStart=s*stepSize;
+    const trainEnd  =trainStart+trainSize;
+    const testStart =trainEnd;
+    const testEnd   =testStart+testSize;
+    if (testEnd>N) break; // テスト窓がtestSize未満 → スキップして終了
+    windows.push({trainStart,trainEnd,testStart,testEnd});
+  }
+  if (windows.length<3)
+    throw new Error('データ不足：ウォークフォワードには最低3期間分のデータが必要です');
+
   const kRange=Array.from({length:kMax-kMin+1},(_,i)=>i+kMin);
-  const kAccs=Object.fromEntries(kRange.map(k=>[k,[]]));
+  const stepResults=[];
+  const dates=S.data.dates;
 
-  for (let step=0;step<numSteps;step++) {
-    const stepBase=trainEnd+step*stepSize;
-    const stepEnd=step===numSteps-1?prices.length-qLen-fLen:trainEnd+(step+1)*stepSize-1;
-    const testCount=Math.max(1,Math.floor(stepSize/qLen));
-    const avail=stepEnd-stepBase+1;
-    if (avail<testCount) continue;
-    const idxs=Array.from({length:testCount},(_,s)=>Math.floor(stepBase+s*avail/testCount));
-    if (idxs.length<5) continue;
+  for (const win of windows) {
+    const {trainStart,trainEnd,testStart,testEnd}=win;
+    const maxTrainS=trainEnd-qLen-fLen; // 訓練パターンの最大開始位置
+    if (maxTrainS<trainStart) { await tick(); continue; }
 
-    const maxTrainS=trainEnd-qLen-fLen;
-    if (maxTrainS<0) continue;
-    const stepCorrect=Object.fromEntries(kRange.map(k=>[k,0]));
-    const stepTotal  =Object.fromEntries(kRange.map(k=>[k,0]));
+    // テスト期間内の全クエリ位置
+    const testIdxs=[];
+    for (let i=testStart;i<=testEnd-qLen-fLen;i++) testIdxs.push(i);
 
-    for (const qStart of idxs) {
-      const query=zNorm(prices.slice(qStart,qStart+qLen));
+    const kCorrect =Object.fromEntries(kRange.map(k=>[k,0]));
+    const kTotal   =Object.fromEntries(kRange.map(k=>[k,0]));
+    const kRetSum  =Object.fromEntries(kRange.map(k=>[k,0]));
+
+    for (const qStart of testIdxs) {
+      const query =zNorm(prices.slice(qStart,qStart+qLen));
       const actual=prices[qStart+qLen+fLen-1]/prices[qStart+qLen]-1;
       if (actual===0) continue;
+
+      // 訓練データのみでDTW計算
       const dists=[];
-      for (let i=0;i<=maxTrainS;i++)
+      for (let i=trainStart;i<=maxTrainS;i++)
         dists.push({idx:i,d:dtwDist(query,zNorm(prices.slice(i,i+qLen)),bw)});
       dists.sort((a,b)=>a.d-b.d);
+
       for (const k of kRange) {
         const picked=[];
         for (const item of dists){
@@ -567,28 +605,59 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw) {
           return s+(fut.at(-1)/fut[0]-1);
         },0)/picked.length;
         if(pred===0)continue;
-        if(Math.sign(pred)===Math.sign(actual))stepCorrect[k]++;
-        stepTotal[k]++;
+        kTotal[k]++;
+        kRetSum[k]+=actual*100; // 単純リターン%（算術平均用）
+        if(Math.sign(pred)===Math.sign(actual))kCorrect[k]++;
       }
     }
-    for (const k of kRange)
-      if(stepTotal[k]>0) kAccs[k].push(stepCorrect[k]/stepTotal[k]);
+
+    // k*選定：サンプル<5のkは除外、同率なら最小k（strict >）
+    let bestK=null, bestAcc=-1;
+    for (const k of kRange) {
+      if(kTotal[k]<5) continue;
+      const acc=kCorrect[k]/kTotal[k];
+      if(acc>bestAcc){bestAcc=acc;bestK=k;}
+    }
+    if(bestK===null){await tick();continue;}
+
+    stepResults.push({
+      step    :stepResults.length+1,
+      trainStart,trainEnd,testStart,testEnd,
+      trainPeriod:`${dates[trainStart]??''}〜${dates[trainEnd-1]??''}`,
+      testPeriod :`${dates[testStart]??''}〜${dates[testEnd-1]??''}`,
+      kstar   :bestK,
+      acc     :bestAcc,
+      avgRet  :kRetSum[bestK]/kTotal[bestK],
+      samples :kTotal[bestK],
+    });
     await tick();
   }
 
-  const validK=kRange.filter(k=>kAccs[k].length>=3).map(k=>{
-    const accs=kAccs[k];
-    const avg=accs.reduce((a,b)=>a+b,0)/accs.length;
-    const stab=accs.length>=2?1-Math.sqrt(accs.reduce((s,a)=>s+(a-avg)**2,0)/(accs.length-1)):1;
-    return{k,avgAcc:avg,stability:stab,validSteps:accs.length};
-  });
-  if(!validK.length) throw new Error('データ不足：ウォークフォワードには最低3期間分のデータが必要です');
-  let best=validK[0];
-  for(const kr of validK) if(kr.avgAcc>best.avgAcc) best=kr;
+  if(stepResults.length<3)
+    throw new Error('データ不足：ウォークフォワードには最低3期間分のデータが必要です');
+
+  // 統計サマリー（方向的中率）
+  const accs   =stepResults.map(s=>s.acc);
+  const meanAcc=accs.reduce((a,b)=>a+b,0)/accs.length;
+  const stdAcc =Math.sqrt(accs.reduce((s,a)=>s+(a-meanAcc)**2,0)/Math.max(accs.length-1,1));
+  const minAcc =Math.min(...accs);
+  const maxAcc =Math.max(...accs);
+
+  // コンセンサスk*（最頻出、同率なら最小k）
+  const kFreq={};
+  for(const s of stepResults) kFreq[s.kstar]=(kFreq[s.kstar]||0)+1;
+  const consensusK=+Object.entries(kFreq).sort((a,b)=>b[1]-a[1]||+a[0]-+b[0])[0][0];
+
+  // 警告（仕様通り）
   const warnings=[];
-  if(best.stability<0.7) warnings.push('安定性が低い（スコア < 0.7）: k* の信頼性に注意してください');
-  if(best.validSteps<4)  warnings.push('有効ステップ数が少ない: 結果の信頼性が限られます');
-  return{kstar:best.k,acc:best.avgAcc,validSteps:best.validSteps,stability:best.stability,kResults:validK,warnings,walkFwd:true};
+  const lowSteps=stepResults.filter(s=>s.acc<0.5).length;
+  if(lowSteps>stepResults.length/2)
+    warnings.push({type:'error',msg:`方向的中率が50%未満のステップが過半数（${lowSteps}/${stepResults.length}）です`});
+  const lowSampleSteps=stepResults.filter(s=>s.samples<10);
+  if(lowSampleSteps.length>0)
+    warnings.push({type:'warn',msg:`サンプル不足：${lowSampleSteps.length}ステップでテストサンプルが10件未満です`});
+
+  return{walkFwd:true,stepResults,consensusK,meanAcc,stdAcc,minAcc,maxAcc,warnings};
 }
 
 async function backtestSimple(prices,qLen,fLen,kMin,kMax,bw) {
@@ -634,34 +703,91 @@ async function backtestSimple(prices,qLen,fLen,kMin,kMax,bw) {
       if(Math.sign(pred)===Math.sign(actual))correct++;
       total++;
     }
-    if(total>0) kResults.push({k,avgAcc:correct/total,stability:1,validSteps:1});
+    if(total>=5) kResults.push({k,avgAcc:correct/total,total,validSteps:1}); // サンプル<5は除外
     await tick();
   }
-  if(!kResults.length) throw new Error('有効な結果が得られませんでした');
+  if(!kResults.length) throw new Error('有効な結果が得られませんでした（全kでサンプル不足）');
   let best=kResults[0];
-  for(const kr of kResults) if(kr.avgAcc>best.avgAcc) best=kr;
-  return{kstar:best.k,acc:best.avgAcc,validSteps:best.validSteps,stability:best.stability,kResults,warnings:[],walkFwd:false};
+  for(const kr of kResults) if(kr.avgAcc>best.avgAcc) best=kr; // 同率は最小k（昇順+strict >）
+  return{walkFwd:false,kstar:best.k,acc:best.avgAcc,validSteps:1,kResults,warnings:[]};
 }
 
 function renderBacktest(r) {
   const el=id=>document.getElementById(id);
-  el('btKstar').textContent=r.kstar;
-  el('btAcc').textContent=(r.acc*100).toFixed(1)+'%';
-  el('btSteps').textContent=r.validSteps;
-  el('btStab').textContent=r.walkFwd?(r.stability*100).toFixed(1)+'%':'—';
-  el('btStab').className='bt-val '+(r.stability>=0.7?'pos':'neg');
-  const warnEl=el('btWarn');
-  if(r.warnings&&r.warnings.length){warnEl.style.display='block';warnEl.innerHTML=r.warnings.map(w=>`⚠️ ${w}`).join('<br>');}
-  else warnEl.style.display='none';
-  const tbody=el('btTbody'); tbody.innerHTML='';
-  r.kResults.forEach(kr=>{
-    const tr=document.createElement('tr');
-    if(kr.k===r.kstar) tr.style.background='rgba(201,168,76,.12)';
-    tr.innerHTML=`<td><strong>${kr.k}${kr.k===r.kstar?' ★':''}</strong></td><td>${kr.validSteps}</td><td>${(kr.avgAcc*100).toFixed(1)}%</td><td>${r.walkFwd?(kr.stability*100).toFixed(1)+'%':'—'}</td>`;
-    tbody.appendChild(tr);
-  });
+
+  if (r.walkFwd) {
+    // ウォークフォワードモード
+    el('btKstar').textContent=r.consensusK;
+    el('btKstar').className='bt-val pos';
+    el('btAcc').textContent=(r.meanAcc*100).toFixed(1)+'%';
+    el('btAcc').className='bt-val '+(r.meanAcc>=0.5?'pos':'neg');
+    el('btStd').textContent=(r.stdAcc*100).toFixed(1)+'%';
+    el('btStd').className='bt-val neu';
+    el('btSteps').textContent=r.stepResults.length;
+
+    // 統計サマリー
+    el('btStatBox').style.display='block';
+    el('btMean').textContent=(r.meanAcc*100).toFixed(1)+'%';
+    el('btMean').className='sum-val '+(r.meanAcc>=0.5?'pos':'neg');
+    el('btStdFull').textContent=(r.stdAcc*100).toFixed(1)+'%';
+    el('btStdFull').className='sum-val neu';
+    el('btMin').textContent=(r.minAcc*100).toFixed(1)+'%';
+    el('btMin').className='sum-val '+(r.minAcc>=0.5?'pos':'neg');
+    el('btMax').textContent=(r.maxAcc*100).toFixed(1)+'%';
+    el('btMax').className='sum-val pos';
+    const stable=r.stdAcc<0.1;
+    el('btStabilityComment').textContent=stable
+      ?'✓ 安定：標準偏差 < 10% — k* の信頼性は高い'
+      :`△ 不安定：標準偏差 ${(r.stdAcc*100).toFixed(1)}% — 期間によってばらつきあり`;
+    el('btStabilityComment').style.color=stable?'var(--green)':'var(--accent)';
+
+    // 警告
+    const errWarn=r.warnings.find(w=>w.type==='error');
+    const smpWarn=r.warnings.find(w=>w.type==='warn');
+    el('btWarnError').style.display=errWarn?'block':'none';
+    if(errWarn) el('btWarnError').textContent='⚠️ '+errWarn.msg;
+    el('btWarnSample').style.display=smpWarn?'block':'none';
+    if(smpWarn) el('btWarnSample').textContent='⚠️ '+smpWarn.msg;
+
+    // per-step テーブル
+    el('btStepSection').style.display='block';
+    el('btKSection').style.display='none';
+    const tbody=el('btStepTbody'); tbody.innerHTML='';
+    r.stepResults.forEach(s=>{
+      const tr=document.createElement('tr');
+      const accCls=s.acc>=0.5?'pos':'neg';
+      const retCls=s.avgRet>=0?'pos':'neg';
+      const isBest=s.kstar===r.consensusK;
+      if(isBest) tr.style.background='rgba(201,168,76,.10)';
+      tr.innerHTML=`<td>${s.step}</td><td style="font-size:.73rem">${s.trainPeriod}</td><td style="font-size:.73rem">${s.testPeriod}</td><td><strong>${s.kstar}${isBest?' ★':''}</strong></td><td class="${accCls}">${(s.acc*100).toFixed(1)}%</td><td class="${retCls}">${s.avgRet>=0?'+':''}${s.avgRet.toFixed(2)}%</td><td>${s.samples}</td>`;
+      tbody.appendChild(tr);
+    });
+    document.getElementById('kValue').value=r.consensusK;
+
+  } else {
+    // 単純分割モード
+    el('btKstar').textContent=r.kstar;
+    el('btKstar').className='bt-val pos';
+    el('btAcc').textContent=(r.acc*100).toFixed(1)+'%';
+    el('btAcc').className='bt-val '+(r.acc>=0.5?'pos':'neg');
+    el('btStd').textContent='—';
+    el('btStd').className='bt-val neu';
+    el('btSteps').textContent=r.validSteps??1;
+    el('btStatBox').style.display='none';
+    el('btWarnError').style.display='none';
+    el('btWarnSample').style.display='none';
+    el('btStepSection').style.display='none';
+    el('btKSection').style.display='block';
+    const tbody=el('btTbody'); tbody.innerHTML='';
+    (r.kResults||[]).forEach(kr=>{
+      const tr=document.createElement('tr');
+      if(kr.k===r.kstar) tr.style.background='rgba(201,168,76,.12)';
+      tr.innerHTML=`<td><strong>${kr.k}${kr.k===r.kstar?' ★':''}</strong></td><td class="${kr.avgAcc>=0.5?'pos':'neg'}">${(kr.avgAcc*100).toFixed(1)}%</td><td>${kr.total??'—'}</td>`;
+      tbody.appendChild(tr);
+    });
+    document.getElementById('kValue').value=r.kstar;
+  }
   el('btResults').style.display='block';
-  document.getElementById('kValue').value=r.kstar;
 }
 
 // ===================== Render results =====================
