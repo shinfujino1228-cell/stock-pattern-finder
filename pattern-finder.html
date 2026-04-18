@@ -26,13 +26,16 @@ h1{font-size:1.35rem;color:var(--accent2);margin-bottom:3px;}
 label{font-size:.71rem;color:var(--text2);}
 input,select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 10px;font-size:.84rem;width:100%;}
 input:focus,select:focus{outline:none;border-color:var(--accent);}
+input[type=checkbox]{width:auto;margin:0;}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;}
 .btn{padding:7px 16px;border:none;border-radius:6px;cursor:pointer;font-size:.84rem;font-weight:600;transition:opacity .15s;}
 .btn:hover{opacity:.82;} .btn:disabled{opacity:.35;cursor:not-allowed;}
 .btn-primary{background:var(--accent);color:#1a1408;}
 .btn-go{background:var(--green);color:#071409;}
 .btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
-.tabs{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;width:fit-content;margin-bottom:12px;}
+.btn-preset{background:var(--blue);color:#fff;font-size:.78rem;padding:5px 14px;border-radius:6px;border:none;cursor:pointer;font-weight:600;}
+.btn-preset:hover{opacity:.82;}
+.tabs{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;width:fit-content;}
 .tab{padding:6px 18px;cursor:pointer;font-size:.8rem;color:var(--text2);background:var(--surface);border:none;transition:all .15s;}
 .tab.active{background:var(--accent);color:#1a1408;font-weight:700;}
 .live-only{display:none;}
@@ -44,39 +47,56 @@ input:focus,select:focus{outline:none;border-color:var(--accent);}
 .chart-wrap{position:relative;}
 .chart-h280{height:280px;} .chart-h200{height:200px;}
 .sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;}
-@media(max-width:560px){.sum-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:700px){.sum-grid{grid-template-columns:repeat(2,1fr);}}
 .sum-card{background:var(--surface2);border-radius:8px;padding:10px 12px;}
 .sum-lbl{font-size:.67rem;color:var(--text2);margin-bottom:3px;line-height:1.4;}
 .sum-sub{font-size:.6rem;opacity:.7;}
 .sum-val{font-size:1.05rem;font-weight:700;}
+.ci-val{font-size:.65rem;color:var(--text2);margin-top:2px;line-height:1.4;}
 .pos{color:var(--green);} .neg{color:var(--red);} .neu{color:var(--text2);}
 .sig{color:var(--green);} .nsig{color:var(--text2);}
 table{width:100%;border-collapse:collapse;font-size:.79rem;}
 th{text-align:left;color:var(--text2);font-weight:600;padding:5px 8px;border-bottom:1px solid var(--border);}
 td{padding:5px 8px;border-bottom:1px solid rgba(58,50,40,.45);}
 tr:last-child td{border-bottom:none;}
-.info{background:var(--surface2);border-left:3px solid var(--accent);padding:10px 13px;border-radius:4px;font-size:.76rem;color:var(--text2);line-height:1.6;}
+.info{background:var(--surface2);border-left:3px solid var(--accent);padding:10px 13px;border-radius:4px;font-size:.76rem;color:var(--text2);line-height:1.7;}
 .warn-box{background:#2a1f10;border-left:3px solid var(--accent);padding:9px 13px;border-radius:4px;font-size:.77rem;color:var(--accent);margin-top:8px;}
+.warn-red{background:#2a1010;border-left:3px solid var(--red);padding:9px 13px;border-radius:4px;font-size:.77rem;color:var(--red);margin-top:8px;}
 .bt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:12px;}
 .bt-card{background:var(--surface2);border-radius:8px;padding:10px 12px;text-align:center;}
 .bt-lbl{font-size:.67rem;color:var(--text2);margin-bottom:4px;}
 .bt-val{font-size:1.1rem;font-weight:700;color:var(--accent2);}
+details{margin-top:10px;}
+details>summary{cursor:pointer;font-size:.78rem;color:var(--accent);font-weight:600;padding:5px 0;user-select:none;list-style:none;display:flex;align-items:center;gap:6px;}
+details>summary::before{content:'▶';font-size:.65rem;}
+details[open]>summary::before{content:'▼';}
+.details-body{padding:10px 0 4px;}
+.exit-tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:.72rem;font-weight:700;}
+.exit-tag.SL{background:#3a1010;color:var(--red);}
+.exit-tag.TP{background:#0f2a1a;color:var(--green);}
+.exit-tag.TS{background:#101828;color:var(--blue);}
+.exit-tag.EXP{background:var(--surface2);color:var(--text2);}
+.judge-pass{background:rgba(86,184,112,.12);border:1px solid rgba(86,184,112,.3);border-radius:6px;padding:10px 13px;font-size:.8rem;color:var(--green);font-weight:600;margin-top:10px;}
+.judge-fail{background:rgba(224,90,90,.08);border:1px solid rgba(224,90,90,.2);border-radius:6px;padding:10px 13px;font-size:.8rem;color:var(--text2);margin-top:10px;}
+.tbl-scroll{overflow-x:auto;}
 </style>
 </head>
 <body>
 
 <h1>Stock Pattern Finder</h1>
-<p class="subtitle">IDTW（Z 正規化 + Sakoe-Chiba DTW）+ k*-NN &nbsp;|&nbsp; シャープレシオ・最大ドローダウン・有意差検定・バックテスト対応</p>
+<p class="subtitle">IDTW（Z 正規化 + Sakoe-Chiba DTW）+ k*-NN &nbsp;|&nbsp; ブートストラップCI・コスト控除・SL/TP・レジームフィルタ対応</p>
 
 <div class="card">
   <div class="card-title">設定</div>
-  <div class="tabs">
-    <button class="tab active" id="tabDemo" onclick="setMode('demo')">デモデータ</button>
-    <button class="tab" id="tabLive" onclick="setMode('live')">Live (Yahoo Finance) ※ローカルのみ</button>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <div class="tabs">
+      <button class="tab active" id="tabDemo" onclick="setMode('demo')">デモデータ</button>
+      <button class="tab" id="tabLive" onclick="setMode('live')">Live (Yahoo Finance) ※ローカルのみ</button>
+    </div>
+    <button class="btn-preset" onclick="applyMidtermPreset()">中期スパン推奨設定</button>
   </div>
   <div id="ghPagesNote" style="display:none;background:#2a1f10;border:1px solid #c9a84c;border-radius:6px;padding:9px 13px;font-size:.77rem;color:#c9a84c;margin-bottom:10px;">
-    ⚠️ GitHub Pages（HTTPS）からは Live モードを利用できません。<br>
-    ローカルで <code>python server.py</code> を起動し、ブラウザで直接 <code>pattern-finder.html</code> を開いてください。
+    ⚠️ GitHub Pages（HTTPS）からは Live モードを利用できません。ローカルで <code>python server.py</code> を起動し、ブラウザで直接 <code>pattern-finder.html</code> を開いてください。
   </div>
   <div class="grid grid-4">
     <div class="ctrl live-only" id="lcServer"><label>サーバー URL</label><input id="serverUrl" value="http://localhost:5000"></div>
@@ -111,6 +131,88 @@ tr:last-child td{border-bottom:none;}
       </select>
     </div>
   </div>
+
+  <!-- 取引コスト設定 -->
+  <details>
+    <summary>取引コスト設定</summary>
+    <div class="details-body">
+      <div class="grid grid-4">
+        <div class="ctrl">
+          <label>商品プリセット</label>
+          <select id="costPreset" onchange="updateCostPreset()">
+            <option value="stock" selected>個別株</option>
+            <option value="nk_mini">日経225先物ミニ</option>
+            <option value="nk_large">日経225先物ラージ</option>
+            <option value="wti">WTI原油先物</option>
+            <option value="custom">カスタム</option>
+          </select>
+        </div>
+        <div class="ctrl"><label>往復コスト（%）</label><input type="number" id="costRoundTrip" value="0.20" min="0" max="5" step="0.01"></div>
+        <div class="ctrl"><label>スリッページ（%）</label><input type="number" id="costSlippage" value="0.10" min="0" max="5" step="0.01"></div>
+        <div class="ctrl"><label>ロール年率（%）</label><input type="number" id="costRoll" value="0" min="0" max="20" step="0.1"></div>
+      </div>
+    </div>
+  </details>
+
+  <!-- イグジット戦略 -->
+  <details>
+    <summary>イグジット戦略（SL / TP / トレーリング）</summary>
+    <div class="details-body">
+      <div class="grid grid-4">
+        <div class="ctrl">
+          <label style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="slEnabled"> 損切り（%下落）
+          </label>
+          <input type="number" id="slValue" value="3.0" min="0.1" max="50" step="0.1">
+        </div>
+        <div class="ctrl">
+          <label style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="tpEnabled"> 利確（%上昇）
+          </label>
+          <input type="number" id="tpValue" value="5.0" min="0.1" max="100" step="0.1">
+        </div>
+        <div class="ctrl">
+          <label style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="tsEnabled"> トレーリングストップ（%押し）
+          </label>
+          <input type="number" id="tsValue" value="2.0" min="0.1" max="20" step="0.1">
+        </div>
+        <div class="ctrl" style="justify-content:flex-end;">
+          <label style="color:var(--green);font-size:.75rem;">✓ 満期保有（条件ヒットなし時は自動）</label>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <!-- レジームフィルタ -->
+  <details>
+    <summary>レジームフィルタ（ボラ / トレンド）</summary>
+    <div class="details-body">
+      <div class="grid grid-4">
+        <div class="ctrl">
+          <label>ボラティリティフィルタ</label>
+          <select id="regimeVol">
+            <option value="all" selected>全期間</option>
+            <option value="same">同一ボラのみ</option>
+            <option value="low">低ボラのみ</option>
+            <option value="mid">中ボラのみ</option>
+            <option value="high">高ボラのみ</option>
+          </select>
+        </div>
+        <div class="ctrl">
+          <label>トレンドフィルタ</label>
+          <select id="regimeTrend">
+            <option value="all" selected>全期間</option>
+            <option value="same">同一トレンドのみ</option>
+            <option value="up">上昇のみ</option>
+            <option value="range">レンジのみ</option>
+            <option value="down">下降のみ</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </details>
+
   <div class="row">
     <button class="btn btn-primary" id="btnLoad" onclick="loadData()">データ読込</button>
     <button class="btn btn-go" id="btnSearch" onclick="runSearch()" disabled>パターン検索</button>
@@ -118,27 +220,76 @@ tr:last-child td{border-bottom:none;}
     <span class="status" id="statusMsg">まずデータを読み込んでください</span>
   </div>
   <div class="prog" id="prog"><div class="prog-fill" id="progFill"></div></div>
+  <p class="status" id="bsStatus" style="margin-top:5px;display:none;"></p>
 </div>
 
 <div class="card">
   <div class="card-title">価格チャート &nbsp;—&nbsp; クリックしてクエリ開始位置を選択</div>
   <div class="chart-wrap chart-h280"><canvas id="mainChart"></canvas></div>
   <p class="status" id="queryInfo" style="margin-top:8px">—</p>
+  <p class="status" id="regimeInfo" style="margin-top:3px;font-size:.74rem;color:var(--text2);">—</p>
 </div>
 
 <div id="results" style="display:none">
+  <div id="rolloverWarn" class="warn-box" style="display:none;margin-bottom:4px;"></div>
   <div class="card">
-    <div class="card-title">サマリー統計</div>
+    <div class="card-title">サマリー統計 <span style="font-size:.7rem;opacity:.6">（ネット・コスト控除後 / [lo, hi] = 95%CI）</span></div>
     <div class="sum-grid">
-      <div class="sum-card"><div class="sum-lbl">平均リターン</div><div class="sum-val" id="sAvg">—</div></div>
-      <div class="sum-card"><div class="sum-lbl">勝率</div><div class="sum-val" id="sWin">—</div></div>
-      <div class="sum-card"><div class="sum-lbl">シャープレシオ <span class="sum-sub">（年換算）</span></div><div class="sum-val" id="sSharpe">—</div></div>
-      <div class="sum-card"><div class="sum-lbl">最大ドローダウン <span class="sum-sub">（平均）</span></div><div class="sum-val" id="sMaxDD">—</div></div>
-      <div class="sum-card"><div class="sum-lbl">中央値 DTW 距離</div><div class="sum-val" id="sDist">—</div></div>
-      <div class="sum-card"><div class="sum-lbl">マッチ数</div><div class="sum-val" id="sCnt">—</div></div>
-      <div class="sum-card"><div class="sum-lbl">t 検定 p 値 <span class="sum-sub">（平均 ≠ 0）</span></div><div class="sum-val" id="sTtest">—</div></div>
-      <div class="sum-card"><div class="sum-lbl">二項検定 p 値 <span class="sum-sub">（勝率 &gt; 50%）</span></div><div class="sum-val" id="sBinom">—</div></div>
+      <div class="sum-card">
+        <div class="sum-lbl">平均リターン（ネット）</div>
+        <div class="sum-val" id="sAvg">—</div>
+        <div class="ci-val" id="sAvgCI"></div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">勝率</div>
+        <div class="sum-val" id="sWin">—</div>
+        <div class="ci-val" id="sWinCI"></div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">シャープレシオ <span class="sum-sub">（年換算）</span></div>
+        <div class="sum-val" id="sSharpe">—</div>
+        <div class="ci-val" id="sSharpeCI"></div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">プロフィットファクター</div>
+        <div class="sum-val" id="sPF">—</div>
+        <div class="ci-val" id="sPFCI"></div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">期待値（ネット）</div>
+        <div class="sum-val" id="sEV">—</div>
+        <div class="ci-val" id="sEVCI"></div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">ペイオフレシオ <span class="sum-sub">（平均利益/損失）</span></div>
+        <div class="sum-val" id="sPayoff">—</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">最大連敗数 <span class="sum-sub">（ブートストラップ）</span></div>
+        <div class="sum-val" id="sConsec">—</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">最大ドローダウン <span class="sum-sub">（平均）</span></div>
+        <div class="sum-val" id="sMaxDD">—</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">中央値 DTW 距離</div>
+        <div class="sum-val" id="sDist">—</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">マッチ数</div>
+        <div class="sum-val" id="sCnt">—</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">t 検定 p 値 <span class="sum-sub">（平均 ≠ 0）</span></div>
+        <div class="sum-val" id="sTtest">—</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-lbl">二項検定 p 値 <span class="sum-sub">（勝率 &gt; 50%）</span></div>
+        <div class="sum-val" id="sBinom">—</div>
+      </div>
     </div>
+    <div id="signalJudge" style="display:none;"></div>
   </div>
 
   <div class="grid grid-2">
@@ -154,10 +305,18 @@ tr:last-child td{border-bottom:none;}
 
   <div class="card">
     <div class="card-title">マッチング詳細</div>
-    <table>
-      <thead><tr><th>#</th><th>開始日</th><th>終了日</th><th>DTW 距離</th><th>将来リターン</th><th>最大上昇</th><th>最大ドローダウン</th></tr></thead>
-      <tbody id="matchTbody"></tbody>
-    </table>
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>開始日</th><th>終了日</th><th>DTW距離</th>
+            <th>グロス</th><th>ネット</th><th>最大上昇</th><th>MDD</th>
+            <th>決済</th><th>日数</th><th>ボラ</th><th>トレンド</th>
+          </tr>
+        </thead>
+        <tbody id="matchTbody"></tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -178,24 +337,33 @@ tr:last-child td{border-bottom:none;}
 
 <div class="card" id="backtestCard" style="display:none">
   <div class="card-title">Step 4: バックテスト（最適 k* 探索）</div>
-  <div class="row" style="align-items:flex-end;gap:16px;flex-wrap:wrap">
-    <div class="ctrl" style="width:110px"><label>k 最小値</label><input type="number" id="btKMin" value="3" min="1" max="20"></div>
-    <div class="ctrl" style="width:110px"><label>k 最大値</label><input type="number" id="btKMax" value="15" min="2" max="50"></div>
+  <div class="row" style="align-items:flex-end;gap:12px;flex-wrap:wrap">
+    <div class="ctrl" style="width:100px"><label>k 最小値</label><input type="number" id="btKMin" value="3" min="1" max="20"></div>
+    <div class="ctrl" style="width:100px"><label>k 最大値</label><input type="number" id="btKMax" value="15" min="2" max="50"></div>
     <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text);">
       <input type="checkbox" id="btWalkFwd" checked style="width:auto;"> ウォークフォワード検証
     </label>
+    <div class="ctrl" style="width:140px">
+      <label>訓練窓方式</label>
+      <select id="btWinMode" onchange="toggleRollInput()">
+        <option value="expanding">拡張窓（Expanding）</option>
+        <option value="rolling">ローリング窓（Rolling）</option>
+      </select>
+    </div>
+    <div class="ctrl" id="rollInputWrap" style="width:120px;display:none;">
+      <label>訓練窓長（日）</label>
+      <input type="number" id="btRollLen" value="750" min="100" max="3000">
+    </div>
     <button class="btn btn-go" id="btnBacktest" onclick="runBacktest()" disabled>バックテスト実行</button>
     <span class="status" id="btStatus"></span>
   </div>
   <div id="btResults" style="display:none;margin-top:14px">
-    <!-- サマリーカード -->
     <div class="bt-grid">
       <div class="bt-card"><div class="bt-lbl">コンセンサス k*</div><div class="bt-val" id="btKstar">—</div></div>
       <div class="bt-card"><div class="bt-lbl">方向的中率（平均）</div><div class="bt-val" id="btAcc">—</div></div>
       <div class="bt-card"><div class="bt-lbl">標準偏差</div><div class="bt-val" id="btStd">—</div></div>
       <div class="bt-card"><div class="bt-lbl">有効ステップ数</div><div class="bt-val" id="btSteps">—</div></div>
     </div>
-    <!-- 統計サマリー -->
     <div id="btStatBox" style="background:var(--surface2);border-radius:8px;padding:12px;margin-top:10px;display:none">
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:8px">
         <div><div class="sum-lbl">平均</div><div class="sum-val" id="btMean">—</div></div>
@@ -205,18 +373,23 @@ tr:last-child td{border-bottom:none;}
       </div>
       <div id="btStabilityComment" style="font-size:.76rem;color:var(--text2);margin-top:4px"></div>
     </div>
-    <!-- 警告 -->
-    <div id="btWarnError" class="warn-box" style="display:none;border-left-color:var(--red);color:var(--red)"></div>
-    <div id="btWarnSample" class="warn-box" style="display:none"></div>
-    <!-- ウォークフォワード per-step テーブル -->
+    <div id="btWarnRoll" class="warn-box" style="display:none;"></div>
+    <div id="btWarnError" class="warn-red" style="display:none;"></div>
+    <div id="btWarnSample" class="warn-box" style="display:none;"></div>
     <div id="btStepSection" style="display:none;margin-top:12px">
       <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">ウォークフォワード詳細</div>
-      <table>
-        <thead><tr><th>ステップ</th><th>訓練期間</th><th>テスト期間</th><th>最適 k*</th><th>方向的中率</th><th>平均リターン</th><th>サンプル数</th></tr></thead>
-        <tbody id="btStepTbody"></tbody>
-      </table>
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>ステップ</th><th>訓練期間</th><th>テスト期間</th><th>最適 k*</th>
+              <th>方向的中率</th><th>平均G</th><th>平均N</th><th>PF</th><th>サンプル数</th>
+            </tr>
+          </thead>
+          <tbody id="btStepTbody"></tbody>
+        </table>
+      </div>
     </div>
-    <!-- 単純分割 k テーブル -->
     <div id="btKSection" style="display:none;margin-top:12px">
       <table>
         <thead><tr><th>k</th><th>方向的中率</th><th>サンプル数</th></tr></thead>
@@ -228,18 +401,27 @@ tr:last-child td{border-bottom:none;}
 
 <div id="algoInfo" class="info" style="display:none">
   <strong>アルゴリズム解説</strong><br>
-  <strong>IDTW</strong>: Z スコア正規化 + Sakoe-Chiba 帯域制約 DTW（パス長正規化）。<br>
-  <strong>シャープレシオ</strong>: 平均リターン / 標準偏差 × √(252/fLen)（リスクフリーレート = 0）。<br>
-  <strong>最大ドローダウン</strong>: 将来期間中の最大ピーク比下落率（各マッチの平均）。<br>
-  <strong>t 検定</strong>: H₀: 平均リターン = 0（両側検定）。<strong>二項検定</strong>: H₁: 勝率 &gt; 50%（正規近似）。 * p&lt;0.05 &nbsp;** p&lt;0.01 &nbsp;*** p&lt;0.001<br>
-  <strong>バックテスト</strong>: ウォークフォワード（拡張訓練窓：訓練は常に先頭から拡張、テスト窓を 20% ずつスライド、最低 3 ステップ）で各ステップの最適 k* を選定し、コンセンサス k* を採用。サンプル &lt; 5 の k は除外。同率は最小 k を採用。
+  <strong>IDTW</strong>: Z スコア正規化（母標準偏差）+ Sakoe-Chiba 帯域制約 DTW（パス長正規化）。<br>
+  <strong>De-overlap</strong>: マッチ間距離 ≥ queryLen + futureLen（窓と将来期間の完全非重複）。<br>
+  <strong>ブートストラップ CI</strong>: マッチ単位・復元抽出 1000 回、95%信頼区間（2.5〜97.5 パーセンタイル）。<br>
+  <strong>二項検定</strong>: 厳密計算（正則不完全ベータ関数）、H₁: 勝率 &gt; 50%。 * p&lt;0.05 &nbsp;** p&lt;0.01 &nbsp;*** p&lt;0.001<br>
+  <strong>シャープレシオ</strong>: 平均ネットリターン / 標本標準偏差 × √(252/fLen)（rf = 0）。<br>
+  <strong>バックテスト</strong>: ウォークフォワード（拡張窓 or ローリング窓、最低 3 ステップ）。k* は方向的中率で選定（CI 下限ベースは計算量過大のため省略）。<br>
+  <strong>レジームフィルタ</strong>: ボラ = 正規化 ATR 20 日の 3 分位、トレンド = MA200 乖離 ±5%。
 </div>
 
+
 <script>
+// 実装選択メモ:
+// - ブートストラップ: 1000回, await tick()を50回ごとに挿入 (Web Workerなし)
+// - 正確二項検定: betaI(wins, n-wins+1, p0) を使用
+// - walk-forward k*選定: 方向的中率最大（CI下限ベースは計算量過大のため省略）
+// - ローリング窓フォールバック: 3窓未満の場合は拡張窓に自動切替
+
 // ===================== State =====================
 const S = { mode:'demo', data:null, queryStart:0, matches:[], charts:{} };
 
-// ===================== Mode =====================
+// ===================== Mode / Preset =====================
 function setMode(m) {
   S.mode = m;
   document.getElementById('tabDemo').classList.toggle('active', m==='demo');
@@ -249,24 +431,94 @@ function setMode(m) {
   document.getElementById('clusterCard').classList.toggle('show', m==='live');
 }
 
+function toggleRollInput() {
+  const on = document.getElementById('btWinMode').value === 'rolling';
+  document.getElementById('rollInputWrap').style.display = on ? '' : 'none';
+}
+
+function applyMidtermPreset() {
+  document.getElementById('queryLen').value = '60';
+  document.getElementById('futureLen').value = '20';
+  document.getElementById('bandwidth').value = '0.10';
+  document.getElementById('kValue').value = '10';
+  document.getElementById('btWinMode').value = 'rolling';
+  document.getElementById('btRollLen').value = '750';
+  toggleRollInput();
+}
+
+// ===================== Cost model =====================
+const COST_PRESETS = {
+  nk_mini:  {rt:0.05, sl:0.03, ro:5},
+  nk_large: {rt:0.02, sl:0.02, ro:5},
+  wti:      {rt:0.10, sl:0.08, ro:5},
+  stock:    {rt:0.20, sl:0.10, ro:0},
+};
+function updateCostPreset() {
+  const p = document.getElementById('costPreset').value;
+  if (COST_PRESETS[p]) {
+    document.getElementById('costRoundTrip').value = COST_PRESETS[p].rt;
+    document.getElementById('costSlippage').value  = COST_PRESETS[p].sl;
+    document.getElementById('costRoll').value      = COST_PRESETS[p].ro;
+  }
+}
+function getCostModel() {
+  return {
+    roundTrip:  +document.getElementById('costRoundTrip').value / 100,
+    slippage:   +document.getElementById('costSlippage').value  / 100,
+    rollAnnual: +document.getElementById('costRoll').value      / 100,
+  };
+}
+function calcNetReturn(grossPct, holdDays, cm) {
+  const costs = (cm.roundTrip + cm.slippage) * 100 + cm.rollAnnual * 100 * (holdDays / 252);
+  return grossPct - costs;
+}
+
+// ===================== Exit rules =====================
+function getExitRules() {
+  return {
+    stopLoss:   { enabled: document.getElementById('slEnabled').checked,  value: +document.getElementById('slValue').value },
+    takeProfit: { enabled: document.getElementById('tpEnabled').checked, value: +document.getElementById('tpValue').value },
+    trailing:   { enabled: document.getElementById('tsEnabled').checked,  value: +document.getElementById('tsValue').value },
+  };
+}
+function computeRealizedReturn(futurePrices, exitRules) {
+  const entry = futurePrices[0];
+  let peak = entry;
+  for (let i = 1; i < futurePrices.length; i++) {
+    const p = futurePrices[i];
+    const retPct = (p / entry - 1) * 100;
+    peak = Math.max(peak, p);
+    if (exitRules.stopLoss.enabled && retPct <= -exitRules.stopLoss.value)
+      return { returnPct: -exitRules.stopLoss.value, exitDay: i, reason: 'SL' };
+    if (exitRules.takeProfit.enabled && retPct >= exitRules.takeProfit.value)
+      return { returnPct: exitRules.takeProfit.value, exitDay: i, reason: 'TP' };
+    if (exitRules.trailing.enabled) {
+      const dd = (peak - p) / peak * 100;
+      if (dd >= exitRules.trailing.value)
+        return { returnPct, exitDay: i, reason: 'TS' };
+    }
+  }
+  return { returnPct: (futurePrices.at(-1) / entry - 1) * 100, exitDay: futurePrices.length - 1, reason: 'EXP' };
+}
+
 // ===================== Demo data (seeded GBM ~1300 days) =====================
 function generateDemo() {
   let seed = 12345;
-  const rng  = () => { seed=(seed*1664525+1013904223)>>>0; return seed/0xFFFFFFFF; };
-  const randn= () => Math.sqrt(-2*Math.log(rng()+1e-12))*Math.cos(2*Math.PI*rng());
+  const rng   = () => { seed=(seed*1664525+1013904223)>>>0; return seed/0xFFFFFFFF; };
+  const randn = () => Math.sqrt(-2*Math.log(rng()+1e-12))*Math.cos(2*Math.PI*rng());
   const dates=[],close=[],open=[],high=[],low=[],volume=[];
-  let price=150;
-  const start=new Date('2019-01-02'); let offset=0;
-  while (dates.length<1300) {
-    const d=new Date(start); d.setDate(d.getDate()+offset++);
+  let price = 150;
+  const start = new Date('2019-01-02'); let offset = 0;
+  while (dates.length < 1300) {
+    const d = new Date(start); d.setDate(d.getDate()+offset++);
     if (d.getDay()===0||d.getDay()===6) continue;
-    const t=dates.length/1300;
+    const t = dates.length/1300;
     let mu=0.0003, sigma=0.015;
     if (t>0.25&&t<0.35){mu=-0.004;sigma=0.028;}
     if (t>0.35&&t<0.50){mu= 0.003;sigma=0.022;}
     if (t>0.70&&t<0.80){mu=-0.002;sigma=0.020;}
     const ret=mu+sigma*randn(), prev=price;
-    price*=Math.exp(ret);
+    price *= Math.exp(ret);
     const o=prev*(1+0.003*(rng()-0.5)), c=price;
     const h=Math.max(o,c)*(1+rng()*0.007), l=Math.min(o,c)*(1-rng()*0.007);
     dates.push(d.toISOString().slice(0,10));
@@ -285,7 +537,7 @@ async function loadData() {
     let data;
     if (S.mode==='demo') {
       await tick();
-      data=generateDemo();
+      data = generateDemo();
       status('ok',`デモデータ: ${data.dates.length}日分 (${data.dates[0]} 〜 ${data.dates.at(-1)})`);
     } else {
       const base  =document.getElementById('serverUrl').value.trim().replace(/\/$/,'');
@@ -355,7 +607,7 @@ function zNorm(arr) {
   const n=arr.length; let mean=0;
   for (let i=0;i<n;i++) mean+=arr[i]; mean/=n;
   let std=0; for (let i=0;i<n;i++) std+=(arr[i]-mean)**2;
-  std=Math.sqrt(std/n);
+  std=Math.sqrt(std/n); // 母標準偏差
   if (std<1e-10) return new Float64Array(n);
   const out=new Float64Array(n);
   for (let i=0;i<n;i++) out[i]=(arr[i]-mean)/std;
@@ -363,6 +615,7 @@ function zNorm(arr) {
 }
 
 function dtwDist(s,t,w) {
+  // 注：論文の「最適パス長による正規化」と分母が異なるが、ランキング用途のため相対順序は保たれる。
   const n=s.length, stride=n+1;
   const D=new Float64Array((n+1)*stride).fill(1e18); D[0]=0;
   for (let i=1;i<=n;i++) {
@@ -373,6 +626,41 @@ function dtwDist(s,t,w) {
     }
   }
   return Math.sqrt(D[n*stride+n]/n);
+}
+
+// ===================== Regime =====================
+function normalizedATR(prices, high, low, idx, win=20) {
+  if (!high||!low||idx<win) return null;
+  let atrSum=0;
+  for (let i=idx-win+1;i<=idx;i++) {
+    const tr=Math.max(high[i]-low[i], Math.abs(high[i]-prices[i-1]), Math.abs(low[i]-prices[i-1]));
+    atrSum+=tr;
+  }
+  return (atrSum/win)/prices[idx]*100;
+}
+
+function computeAllATR(prices, high, low, win=20) {
+  return prices.map((_,i)=>normalizedATR(prices,high,low,i,win));
+}
+
+function atrTerciles(atrs) {
+  const valid=[...atrs.filter(v=>v!=null)].sort((a,b)=>a-b);
+  if (!valid.length) return {lo:0,hi:Infinity};
+  return {lo:valid[Math.floor(valid.length/3)], hi:valid[Math.floor(valid.length*2/3)]};
+}
+
+function atrTier(atr, terciles) {
+  if (atr==null) return 'N/A';
+  if (atr<=terciles.lo) return '低';
+  if (atr<=terciles.hi) return '中';
+  return '高';
+}
+
+function trendRegime(prices, idx, win=200) {
+  if (idx<win) return 'N/A';
+  const ma=prices.slice(idx-win,idx).reduce((a,b)=>a+b,0)/win;
+  const dev=(prices[idx]-ma)/ma*100;
+  return dev>5?'上昇':dev<-5?'下降':'レンジ';
 }
 
 // ===================== Max drawdown =====================
@@ -424,22 +712,68 @@ function betaI(a,b,x) {
 
 function tTestPValue(t,df) { return betaI(df/2,0.5,df/(df+t*t)); }
 
-function normalCDF(z) {
-  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
-  const sign=z<0?-1:1, x=Math.abs(z)/Math.SQRT2, t2=1/(1+p*x);
-  const y=1-(((((a5*t2+a4)*t2)+a3)*t2+a2)*t2+a1)*t2*Math.exp(-x*x);
-  return 0.5*(1+sign*y);
-}
-
-function binomPValue(wins,n) {
-  if (n===0) return 1;
-  return 1-normalCDF((wins-n*0.5)/Math.sqrt(n*0.25));
+function binomPValueExact(wins,n,p0=0.5) {
+  // P(X >= wins) 厳密計算
+  if (wins===0) return 1;
+  if (wins>n) return 0;
+  return betaI(wins, n-wins+1, p0);
 }
 
 function pLabel(p) {
   const s=p<0.001?'***':p<0.01?'**':p<0.05?'*':'';
   return p.toFixed(4)+s;
 }
+
+function profitFactor(rets) {
+  let pos=0,neg=0;
+  for (const r of rets){if(r>0)pos+=r;else neg+=Math.abs(r);}
+  return neg<1e-10?(pos>0?Infinity:1):pos/neg;
+}
+
+function maxConsecLoss(rets) {
+  let mx=0,cur=0;
+  for (const r of rets){if(r<0){cur++;mx=Math.max(mx,cur);}else cur=0;}
+  return mx;
+}
+
+// ===================== Bootstrap =====================
+async function runBootstrap(netRets, fLen, iters=1000) {
+  const n=netRets.length;
+  if (n<2) return null;
+  const prog=document.getElementById('prog'), fill=document.getElementById('progFill');
+  const bsSt=document.getElementById('bsStatus');
+  prog.style.display='block'; fill.style.width='0%';
+  bsSt.style.display='block';
+  const samps={mean:[],win:[],sh:[],pf:[],consec:[]};
+  for (let it=0;it<iters;it++) {
+    const s=Array.from({length:n},()=>netRets[Math.floor(Math.random()*n)]);
+    const m=s.reduce((a,b)=>a+b,0)/n;
+    const v=s.reduce((a,b)=>a+(b-m)**2,0)/Math.max(n-1,1);
+    const sd=Math.sqrt(v);
+    samps.mean.push(m);
+    samps.win.push(s.filter(r=>r>0).length/n);
+    samps.sh.push(sd>1e-10?(m/sd)*Math.sqrt(252/fLen):0);
+    samps.pf.push(profitFactor(s));
+    const perm=[...s].sort(()=>Math.random()-0.5);
+    samps.consec.push(maxConsecLoss(perm));
+    if (it%50===49) {
+      fill.style.width=Math.round((it+1)/iters*100)+'%';
+      bsSt.textContent=`ブートストラップ: ${it+1}/${iters}回`;
+      await tick();
+    }
+  }
+  prog.style.display='none'; bsSt.style.display='none';
+  const ci=(arr,lo=0.025,hi=0.975)=>{
+    const s=[...arr].sort((a,b)=>a-b);
+    return {lo:s[Math.floor(iters*lo)],hi:s[Math.floor(iters*hi)]};
+  };
+  const consec=[...samps.consec].sort((a,b)=>a-b);
+  return {
+    mean:ci(samps.mean), win:ci(samps.win), sh:ci(samps.sh), pf:ci(samps.pf),
+    consec:{avg:samps.consec.reduce((a,b)=>a+b,0)/iters, p95:consec[Math.floor(iters*0.95)]}
+  };
+}
+
 
 // ===================== Pattern search =====================
 async function runSearch() {
@@ -450,43 +784,106 @@ async function runSearch() {
   const bwR   =+document.getElementById('bandwidth').value;
   const bw    =Math.max(1,Math.ceil(qLen*bwR));
   const prices=S.data.close;
+  const high  =S.data.high;
+  const low   =S.data.low;
+  const cm    =getCostModel();
+  const exitRules=getExitRules();
   const qs=S.queryStart, qe=qs+qLen;
   if (qe+fLen>prices.length){status('err','クエリ窓 + 将来期間がデータ範囲を超えています');return;}
   const btn=document.getElementById('btnSearch'); btn.disabled=true;
   status('loading','IDTW 計算中…');
   const prog=document.getElementById('prog'),fill=document.getElementById('progFill');
   prog.style.display='block'; fill.style.width='0%';
+
+  // Regime computation
+  const allATR=computeAllATR(prices,high,low);
+  const terciles=atrTerciles(allATR);
+  const queryATR=allATR[qe-1];
+  const queryVol=atrTier(queryATR,terciles);
+  const queryTrend=trendRegime(prices,qe-1);
+  let devStr='';
+  if (qe-1>=200){
+    const ma=prices.slice(qe-201,qe-1).reduce((a,b)=>a+b,0)/200;
+    devStr=` (MA200乖離${((prices[qe-1]-ma)/ma*100).toFixed(1)}%)`;
+  }
+  document.getElementById('regimeInfo').textContent=`クエリレジーム: ボラ=${queryVol} | トレンド=${queryTrend}${devStr}`;
+
+  const regVol  =document.getElementById('regimeVol').value;
+  const regTrend=document.getElementById('regimeTrend').value;
+
+  // DTW over all candidates
   const query=zNorm(prices.slice(qs,qe));
   const maxStart=prices.length-qLen-fLen;
   const CHUNK=40, dists=[];
   for (let start=0;start<=maxStart;start+=CHUNK) {
     const end=Math.min(start+CHUNK,maxStart+1);
     for (let i=start;i<end;i++) {
-      if (i+qLen>qs-Math.floor(qLen/2)&&i<qe+Math.floor(qLen/2)) continue;
+      // 強化de-overlap: クエリとの完全非重複
+      if (Math.abs(i-qs)<qLen+fLen) continue;
       dists.push({idx:i,d:dtwDist(query,zNorm(prices.slice(i,i+qLen)),bw)});
     }
     fill.style.width=Math.round((end/(maxStart+1))*100)+'%';
     await tick();
   }
   dists.sort((a,b)=>a.d-b.d);
+
+  // Regime filter
+  const filterMatch=(item)=>{
+    const ce=item.idx+qLen-1;
+    const vol=atrTier(allATR[ce],terciles);
+    const tr=trendRegime(prices,ce);
+    if (regVol==='same' && vol!==queryVol) return false;
+    if (regVol==='low'  && vol!=='低') return false;
+    if (regVol==='mid'  && vol!=='中') return false;
+    if (regVol==='high' && vol!=='高') return false;
+    if (regTrend==='same'  && tr!==queryTrend) return false;
+    if (regTrend==='up'    && tr!=='上昇') return false;
+    if (regTrend==='range' && tr!=='レンジ') return false;
+    if (regTrend==='down'  && tr!=='下降') return false;
+    return true;
+  };
+  const filtered=dists.filter(filterMatch);
+  const src=filtered.length>=k?filtered:dists; // フィルタが厳しすぎる場合はフォールバック
+
+  // k*-NN with strengthened de-overlap: |i-j| >= qLen+fLen
   const picked=[];
-  for (const item of dists) {
+  for (const item of src) {
     if (picked.length>=k) break;
-    if (picked.every(p=>Math.abs(p.idx-item.idx)>=Math.floor(qLen/2))) picked.push(item);
+    if (picked.every(p=>Math.abs(p.idx-item.idx)>=qLen+fLen)) picked.push(item);
   }
+  prog.style.display='none';
+
   S.matches=picked.map((item,rank)=>{
     const pat =Array.from(prices.slice(item.idx,item.idx+qLen));
     const fut =Array.from(prices.slice(item.idx+qLen,item.idx+qLen+fLen));
-    const fRet   =fut.length?(fut.at(-1)/fut[0]-1)*100:0;
-    const maxGain=fut.length?(Math.max(...fut)/fut[0]-1)*100:0;
-    const mdd    =computeMDD(fut);
+    const realized=computeRealizedReturn(fut,exitRules);
+    const grossRet=fut.length?(fut.at(-1)/fut[0]-1)*100:0;
+    const netRet  =calcNetReturn(realized.returnPct,realized.exitDay||fLen,cm);
+    const maxGain =fut.length?(Math.max(...fut)/fut[0]-1)*100:0;
+    const mdd     =computeMDD(fut);
+    const ce=item.idx+qLen-1;
     return {rank:rank+1,idx:item.idx,dist:item.d,
       startDate:S.data.dates[item.idx],endDate:S.data.dates[item.idx+qLen-1],
-      pat,fut,fRet,maxGain,mdd};
+      pat,fut,fRet:grossRet,netRet,maxGain,mdd,
+      exitReason:realized.reason,exitDay:realized.exitDay,
+      volTier:atrTier(allATR[ce],terciles),trend:trendRegime(prices,ce)};
   });
-  prog.style.display='none'; btn.disabled=false;
+
+  // Bootstrap CI
+  status('loading','ブートストラップCI計算中…');
+  const ci=await runBootstrap(S.matches.map(m=>m.netRet),fLen);
+
+  // Rollover warning
+  const isFutures=['nk_mini','nk_large','wti'].includes(document.getElementById('costPreset').value);
+  const rwEl=document.getElementById('rolloverWarn');
+  if (fLen>20&&isFutures){
+    rwEl.style.display='block';
+    rwEl.textContent='⚠️ 将来期間が20営業日を超えています。限月交代を伴う可能性があります';
+  } else rwEl.style.display='none';
+
+  btn.disabled=false;
   status('ok',`${S.matches.length}件のパターンを発見`);
-  renderResults();
+  renderResults(ci);
   document.getElementById('results').style.display='block';
   document.getElementById('backtestCard').style.display='block';
   document.getElementById('algoInfo').style.display='block';
@@ -536,9 +933,11 @@ async function runBacktest() {
   const kMax=Math.max(kMin+1,+document.getElementById('btKMax').value);
   const bw=Math.max(1,Math.ceil(qLen*(+document.getElementById('bandwidth').value)));
   const walkFwd=document.getElementById('btWalkFwd').checked;
+  const cm=getCostModel();
+  const exitRules=getExitRules();
   try {
     const result=walkFwd
-      ? await backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw)
+      ? await backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules)
       : await backtestSimple(prices,qLen,fLen,kMin,kMax,bw);
     renderBacktest(result);
     btSt.className='status ok'; btSt.textContent='完了';
@@ -546,25 +945,42 @@ async function runBacktest() {
   finally{btn.disabled=false;}
 }
 
-async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw) {
+async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
   const N=prices.length;
   const trainSize=Math.floor(N*0.5);
   const testSize =Math.floor(N*0.2);
-  const stepSize =testSize; // 重複なし
+  const winMode  =document.getElementById('btWinMode').value;
+  const rollLen  =+document.getElementById('btRollLen').value;
+  let usedFallback=false;
 
-  // 拡張訓練ウィンドウ：訓練は常に0から始まり、テスト窓がスライドする
-  // W1: train[0,50%), test[50%,70%)
-  // W2: train[0,70%), test[70%,90%)
-  // W3: train[0,90%), test[90%,100%) ← 最終窓は短くてもOK
-  const windows=[];
-  for (let s=0;;s++) {
-    const trainStart=0;
-    const trainEnd  =trainSize+s*testSize; // 訓練窓が拡張
-    const testStart =trainEnd;
-    const testEnd   =Math.min(testStart+testSize,N);
-    if(testStart>=N) break;
-    if(testEnd-testStart<qLen+fLen) break; // クエリ1件も取れない → 終了
-    windows.push({trainStart,trainEnd,testStart,testEnd});
+  function buildWindows(mode) {
+    const wins=[];
+    if (mode==='rolling') {
+      for (let s=0;;s++) {
+        const trainStart=s*testSize;
+        const trainEnd  =trainStart+rollLen;
+        const testStart =trainEnd;
+        const testEnd   =Math.min(testStart+testSize,N);
+        if (testStart>=N||testEnd-testStart<qLen+fLen) break;
+        wins.push({trainStart,trainEnd,testStart,testEnd});
+      }
+    } else {
+      for (let s=0;;s++) {
+        const trainStart=0;
+        const trainEnd  =trainSize+s*testSize;
+        const testStart =trainEnd;
+        const testEnd   =Math.min(testStart+testSize,N);
+        if (testStart>=N||testEnd-testStart<qLen+fLen) break;
+        wins.push({trainStart,trainEnd,testStart,testEnd});
+      }
+    }
+    return wins;
+  }
+
+  let windows=buildWindows(winMode);
+  if (windows.length<3 && winMode==='rolling') {
+    windows=buildWindows('expanding');
+    usedFallback=true;
   }
   if (windows.length<3)
     throw new Error('データ不足：ウォークフォワードには最低3期間分のデータが必要です');
@@ -575,33 +991,32 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw) {
 
   for (const win of windows) {
     const {trainStart,trainEnd,testStart,testEnd}=win;
-    const maxTrainS=trainEnd-qLen-fLen; // 訓練パターンの最大開始位置
-    if (maxTrainS<trainStart) { await tick(); continue; }
+    const maxTrainS=trainEnd-qLen-fLen;
+    if (maxTrainS<trainStart){await tick();continue;}
 
-    // テスト期間内の全クエリ位置
     const testIdxs=[];
     for (let i=testStart;i<=testEnd-qLen-fLen;i++) testIdxs.push(i);
 
-    const kCorrect =Object.fromEntries(kRange.map(k=>[k,0]));
-    const kTotal   =Object.fromEntries(kRange.map(k=>[k,0]));
-    const kRetSum  =Object.fromEntries(kRange.map(k=>[k,0]));
+    const kCorrect=Object.fromEntries(kRange.map(k=>[k,0]));
+    const kTotal  =Object.fromEntries(kRange.map(k=>[k,0]));
+    const kGrossSum=Object.fromEntries(kRange.map(k=>[k,0]));
+    const kNetSum =Object.fromEntries(kRange.map(k=>[k,0]));
+    const kPosNet =Object.fromEntries(kRange.map(k=>[k,0]));
+    const kNegNet =Object.fromEntries(kRange.map(k=>[k,0]));
 
     for (const qStart of testIdxs) {
-      const query =zNorm(prices.slice(qStart,qStart+qLen));
+      const query=zNorm(prices.slice(qStart,qStart+qLen));
       const actual=prices[qStart+qLen+fLen-1]/prices[qStart+qLen]-1;
       if (actual===0) continue;
-
-      // 訓練データのみでDTW計算
       const dists=[];
       for (let i=trainStart;i<=maxTrainS;i++)
         dists.push({idx:i,d:dtwDist(query,zNorm(prices.slice(i,i+qLen)),bw)});
       dists.sort((a,b)=>a.d-b.d);
-
       for (const k of kRange) {
         const picked=[];
-        for (const item of dists){
+        for (const item of dists) {
           if(picked.length>=k)break;
-          if(picked.every(p=>Math.abs(p.idx-item.idx)>=Math.floor(qLen/2)))picked.push(item);
+          if(picked.every(p=>Math.abs(p.idx-item.idx)>=qLen+fLen))picked.push(item);
         }
         if(!picked.length)continue;
         const pred=picked.reduce((s,item)=>{
@@ -609,30 +1024,33 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw) {
           return s+(fut.at(-1)/fut[0]-1);
         },0)/picked.length;
         if(pred===0)continue;
+        const fut=Array.from(prices.slice(qStart+qLen,qStart+qLen+fLen));
+        const realized=computeRealizedReturn(fut,exitRules);
+        const netPct=calcNetReturn(realized.returnPct,realized.exitDay||fLen,cm);
         kTotal[k]++;
-        kRetSum[k]+=actual*100; // 単純リターン%（算術平均用）
+        kGrossSum[k]+=actual*100;
+        kNetSum[k]+=netPct;
+        if(netPct>0)kPosNet[k]+=netPct;else kNegNet[k]+=Math.abs(netPct);
         if(Math.sign(pred)===Math.sign(actual))kCorrect[k]++;
       }
     }
-
-    // k*選定：サンプル<5のkは除外、同率なら最小k（strict >）
-    let bestK=null, bestAcc=-1;
+    let bestK=null,bestAcc=-1;
     for (const k of kRange) {
-      if(kTotal[k]<5) continue;
+      if(kTotal[k]<5)continue;
       const acc=kCorrect[k]/kTotal[k];
       if(acc>bestAcc){bestAcc=acc;bestK=k;}
     }
     if(bestK===null){await tick();continue;}
-
+    const pf=kNegNet[bestK]<1e-10?(kPosNet[bestK]>0?Infinity:1):kPosNet[bestK]/kNegNet[bestK];
     stepResults.push({
-      step    :stepResults.length+1,
+      step:stepResults.length+1,
       trainStart,trainEnd,testStart,testEnd,
       trainPeriod:`${dates[trainStart]??''}〜${dates[trainEnd-1]??''}`,
       testPeriod :`${dates[testStart]??''}〜${dates[testEnd-1]??''}`,
-      kstar   :bestK,
-      acc     :bestAcc,
-      avgRet  :kRetSum[bestK]/kTotal[bestK],
-      samples :kTotal[bestK],
+      kstar:bestK,acc:bestAcc,
+      avgGross:kGrossSum[bestK]/kTotal[bestK],
+      avgNet:kNetSum[bestK]/kTotal[bestK],
+      pf,samples:kTotal[bestK],
     });
     await tick();
   }
@@ -640,26 +1058,22 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw) {
   if(stepResults.length<3)
     throw new Error('データ不足：ウォークフォワードには最低3期間分のデータが必要です');
 
-  // 統計サマリー（方向的中率）
-  const accs   =stepResults.map(s=>s.acc);
+  const accs=stepResults.map(s=>s.acc);
   const meanAcc=accs.reduce((a,b)=>a+b,0)/accs.length;
-  const stdAcc =Math.sqrt(accs.reduce((s,a)=>s+(a-meanAcc)**2,0)/Math.max(accs.length-1,1));
-  const minAcc =Math.min(...accs);
-  const maxAcc =Math.max(...accs);
-
-  // コンセンサスk*（最頻出、同率なら最小k）
+  const stdAcc=Math.sqrt(accs.reduce((s,a)=>s+(a-meanAcc)**2,0)/Math.max(accs.length-1,1));
+  const minAcc=Math.min(...accs), maxAcc=Math.max(...accs);
   const kFreq={};
-  for(const s of stepResults) kFreq[s.kstar]=(kFreq[s.kstar]||0)+1;
+  for(const s of stepResults)kFreq[s.kstar]=(kFreq[s.kstar]||0)+1;
   const consensusK=+Object.entries(kFreq).sort((a,b)=>b[1]-a[1]||+a[0]-+b[0])[0][0];
 
-  // 警告（仕様通り）
   const warnings=[];
+  if(usedFallback)warnings.push({type:'info',msg:'ローリング窓でウィンドウ数不足のため拡張窓に自動切替しました'});
   const lowSteps=stepResults.filter(s=>s.acc<0.5).length;
   if(lowSteps>stepResults.length/2)
     warnings.push({type:'error',msg:`方向的中率が50%未満のステップが過半数（${lowSteps}/${stepResults.length}）です`});
-  const lowSampleSteps=stepResults.filter(s=>s.samples<10);
-  if(lowSampleSteps.length>0)
-    warnings.push({type:'warn',msg:`サンプル不足：${lowSampleSteps.length}ステップでテストサンプルが10件未満です`});
+  const lowSamp=stepResults.filter(s=>s.samples<10);
+  if(lowSamp.length>0)
+    warnings.push({type:'warn',msg:`サンプル不足：${lowSamp.length}ステップでテストサンプルが10件未満です`});
 
   return{walkFwd:true,stepResults,consensusK,meanAcc,stdAcc,minAcc,maxAcc,warnings};
 }
@@ -677,8 +1091,8 @@ async function backtestSimple(prices,qLen,fLen,kMin,kMax,bw) {
   const splitIdx=Math.floor(prices.length*0.7);
   const kRange=Array.from({length:kMax-kMin+1},(_,i)=>i+kMin);
   const testIdxs=[];
-  for(let i=splitIdx;i<=prices.length-qLen-fLen;i++) testIdxs.push(i);
-  if(testIdxs.length<5) throw new Error('データ不足：テスト期間が短すぎます');
+  for(let i=splitIdx;i<=prices.length-qLen-fLen;i++)testIdxs.push(i);
+  if(testIdxs.length<5)throw new Error('データ不足：テスト期間が短すぎます');
   const step=Math.max(1,Math.floor(testIdxs.length/10));
   const sampled=testIdxs.filter((_,i)=>i%step===0);
   const maxTrainS=splitIdx-qLen-fLen;
@@ -696,7 +1110,7 @@ async function backtestSimple(prices,qLen,fLen,kMin,kMax,bw) {
       const picked=[];
       for(const item of dists){
         if(picked.length>=k)break;
-        if(picked.every(p=>Math.abs(p.idx-item.idx)>=Math.floor(qLen/2)))picked.push(item);
+        if(picked.every(p=>Math.abs(p.idx-item.idx)>=qLen+fLen))picked.push(item);
       }
       if(!picked.length)continue;
       const pred=picked.reduce((s,item)=>{
@@ -707,85 +1121,68 @@ async function backtestSimple(prices,qLen,fLen,kMin,kMax,bw) {
       if(Math.sign(pred)===Math.sign(actual))correct++;
       total++;
     }
-    if(total>=5) kResults.push({k,avgAcc:correct/total,total,validSteps:1}); // サンプル<5は除外
+    if(total>=5)kResults.push({k,avgAcc:correct/total,total});
     await tick();
   }
-  if(!kResults.length) throw new Error('有効な結果が得られませんでした（全kでサンプル不足）');
+  if(!kResults.length)throw new Error('有効な結果が得られませんでした（全kでサンプル不足）');
   let best=kResults[0];
-  for(const kr of kResults) if(kr.avgAcc>best.avgAcc) best=kr; // 同率は最小k（昇順+strict >）
+  for(const kr of kResults)if(kr.avgAcc>best.avgAcc)best=kr;
   return{walkFwd:false,kstar:best.k,acc:best.avgAcc,validSteps:1,kResults,warnings:[]};
 }
 
+
+// ===================== Render backtest =====================
 function renderBacktest(r) {
   const el=id=>document.getElementById(id);
-
   if (r.walkFwd) {
-    // ウォークフォワードモード
-    el('btKstar').textContent=r.consensusK;
-    el('btKstar').className='bt-val pos';
+    el('btKstar').textContent=r.consensusK; el('btKstar').className='bt-val pos';
     el('btAcc').textContent=(r.meanAcc*100).toFixed(1)+'%';
     el('btAcc').className='bt-val '+(r.meanAcc>=0.5?'pos':'neg');
-    el('btStd').textContent=(r.stdAcc*100).toFixed(1)+'%';
-    el('btStd').className='bt-val neu';
+    el('btStd').textContent=(r.stdAcc*100).toFixed(1)+'%'; el('btStd').className='bt-val neu';
     el('btSteps').textContent=r.stepResults.length;
-
-    // 統計サマリー
     el('btStatBox').style.display='block';
     el('btMean').textContent=(r.meanAcc*100).toFixed(1)+'%';
     el('btMean').className='sum-val '+(r.meanAcc>=0.5?'pos':'neg');
-    el('btStdFull').textContent=(r.stdAcc*100).toFixed(1)+'%';
-    el('btStdFull').className='sum-val neu';
+    el('btStdFull').textContent=(r.stdAcc*100).toFixed(1)+'%'; el('btStdFull').className='sum-val neu';
     el('btMin').textContent=(r.minAcc*100).toFixed(1)+'%';
     el('btMin').className='sum-val '+(r.minAcc>=0.5?'pos':'neg');
-    el('btMax').textContent=(r.maxAcc*100).toFixed(1)+'%';
-    el('btMax').className='sum-val pos';
+    el('btMax').textContent=(r.maxAcc*100).toFixed(1)+'%'; el('btMax').className='sum-val pos';
     const stable=r.stdAcc<0.1;
-    el('btStabilityComment').textContent=stable
-      ?'✓ 安定：標準偏差 < 10% — k* の信頼性は高い'
-      :`△ 不安定：標準偏差 ${(r.stdAcc*100).toFixed(1)}% — 期間によってばらつきあり`;
+    el('btStabilityComment').textContent=stable?'✓ 安定：標準偏差 < 10%':`△ 不安定：標準偏差 ${(r.stdAcc*100).toFixed(1)}%`;
     el('btStabilityComment').style.color=stable?'var(--green)':'var(--accent)';
-
-    // 警告
-    const errWarn=r.warnings.find(w=>w.type==='error');
-    const smpWarn=r.warnings.find(w=>w.type==='warn');
-    el('btWarnError').style.display=errWarn?'block':'none';
-    if(errWarn) el('btWarnError').textContent='⚠️ '+errWarn.msg;
-    el('btWarnSample').style.display=smpWarn?'block':'none';
-    if(smpWarn) el('btWarnSample').textContent='⚠️ '+smpWarn.msg;
-
-    // per-step テーブル
-    el('btStepSection').style.display='block';
-    el('btKSection').style.display='none';
+    const infoW=r.warnings.find(w=>w.type==='info');
+    const errW =r.warnings.find(w=>w.type==='error');
+    const smpW =r.warnings.find(w=>w.type==='warn');
+    el('btWarnRoll').style.display=infoW?'block':'none';
+    if(infoW)el('btWarnRoll').textContent='⚠️ '+infoW.msg;
+    el('btWarnError').style.display=errW?'block':'none';
+    if(errW)el('btWarnError').textContent='⚠️ '+errW.msg;
+    el('btWarnSample').style.display=smpW?'block':'none';
+    if(smpW)el('btWarnSample').textContent='⚠️ '+smpW.msg;
+    el('btStepSection').style.display='block'; el('btKSection').style.display='none';
     const tbody=el('btStepTbody'); tbody.innerHTML='';
     r.stepResults.forEach(s=>{
       const tr=document.createElement('tr');
-      const accCls=s.acc>=0.5?'pos':'neg';
-      const retCls=s.avgRet>=0?'pos':'neg';
       const isBest=s.kstar===r.consensusK;
-      if(isBest) tr.style.background='rgba(201,168,76,.10)';
-      tr.innerHTML=`<td>${s.step}</td><td style="font-size:.73rem">${s.trainPeriod}</td><td style="font-size:.73rem">${s.testPeriod}</td><td><strong>${s.kstar}${isBest?' ★':''}</strong></td><td class="${accCls}">${(s.acc*100).toFixed(1)}%</td><td class="${retCls}">${s.avgRet>=0?'+':''}${s.avgRet.toFixed(2)}%</td><td>${s.samples}</td>`;
+      if(isBest)tr.style.background='rgba(201,168,76,.10)';
+      const pfStr=isFinite(s.pf)?s.pf.toFixed(2):'∞';
+      tr.innerHTML=`<td>${s.step}</td><td style="font-size:.73rem">${s.trainPeriod}</td><td style="font-size:.73rem">${s.testPeriod}</td><td><strong>${s.kstar}${isBest?' ★':''}</strong></td><td class="${s.acc>=0.5?'pos':'neg'}">${(s.acc*100).toFixed(1)}%</td><td class="${s.avgGross>=0?'pos':'neg'}">${s.avgGross>=0?'+':''}${s.avgGross.toFixed(2)}%</td><td class="${s.avgNet>=0?'pos':'neg'}">${s.avgNet>=0?'+':''}${s.avgNet.toFixed(2)}%</td><td class="${s.pf>=1?'pos':'neg'}">${pfStr}</td><td>${s.samples}</td>`;
       tbody.appendChild(tr);
     });
     document.getElementById('kValue').value=r.consensusK;
-
   } else {
-    // 単純分割モード
-    el('btKstar').textContent=r.kstar;
-    el('btKstar').className='bt-val pos';
+    el('btKstar').textContent=r.kstar; el('btKstar').className='bt-val pos';
     el('btAcc').textContent=(r.acc*100).toFixed(1)+'%';
     el('btAcc').className='bt-val '+(r.acc>=0.5?'pos':'neg');
-    el('btStd').textContent='—';
-    el('btStd').className='bt-val neu';
+    el('btStd').textContent='—'; el('btStd').className='bt-val neu';
     el('btSteps').textContent=r.validSteps??1;
     el('btStatBox').style.display='none';
-    el('btWarnError').style.display='none';
-    el('btWarnSample').style.display='none';
-    el('btStepSection').style.display='none';
-    el('btKSection').style.display='block';
+    ['btWarnRoll','btWarnError','btWarnSample'].forEach(id=>el(id).style.display='none');
+    el('btStepSection').style.display='none'; el('btKSection').style.display='block';
     const tbody=el('btTbody'); tbody.innerHTML='';
     (r.kResults||[]).forEach(kr=>{
       const tr=document.createElement('tr');
-      if(kr.k===r.kstar) tr.style.background='rgba(201,168,76,.12)';
+      if(kr.k===r.kstar)tr.style.background='rgba(201,168,76,.12)';
       tr.innerHTML=`<td><strong>${kr.k}${kr.k===r.kstar?' ★':''}</strong></td><td class="${kr.avgAcc>=0.5?'pos':'neg'}">${(kr.avgAcc*100).toFixed(1)}%</td><td>${kr.total??'—'}</td>`;
       tbody.appendChild(tr);
     });
@@ -795,34 +1192,83 @@ function renderBacktest(r) {
 }
 
 // ===================== Render results =====================
-function renderResults() {
+function renderResults(ci) {
   const ms=S.matches, fLen=+document.getElementById('futureLen').value;
   const qLen=+document.getElementById('queryLen').value, n=ms.length;
-  const rets=ms.map(m=>m.fRet);
-  const mean=rets.reduce((a,b)=>a+b,0)/n;
-  const variance=n>1?rets.reduce((a,b)=>a+(b-mean)**2,0)/(n-1):0;
+  const netRets=ms.map(m=>m.netRet);
+  const grossRets=ms.map(m=>m.fRet);
+  const mean=netRets.reduce((a,b)=>a+b,0)/n;
+  const variance=n>1?netRets.reduce((a,b)=>a+(b-mean)**2,0)/(n-1):0;
   const std=Math.sqrt(variance);
-  const wins=rets.filter(r=>r>0).length;
+  const wins=netRets.filter(r=>r>0).length;
   const medDist=[...ms.map(m=>m.dist)].sort((a,b)=>a-b)[Math.floor(n/2)];
   const sharpe=std>1e-10?(mean/std)*Math.sqrt(252/fLen):0;
   const avgMDD=ms.reduce((s,m)=>s+m.mdd,0)/n;
   const tStat=std>1e-10&&n>1?mean/(std/Math.sqrt(n)):0;
   const tPval=n>1?tTestPValue(Math.abs(tStat),n-1):1;
-  const bPval=binomPValue(wins,n);
+  const bPval=binomPValueExact(wins,n);
+  const pf=profitFactor(netRets);
+  const pos=netRets.filter(r=>r>0), neg=netRets.filter(r=>r<0);
+  const avgPos=pos.length?pos.reduce((a,b)=>a+b,0)/pos.length:0;
+  const avgNeg=neg.length?neg.reduce((a,b)=>a+b,0)/neg.length:0;
+  const payoff=Math.abs(avgNeg)>1e-10?Math.abs(avgPos/avgNeg):0;
+  const grossMean=grossRets.reduce((a,b)=>a+b,0)/n;
   const el=id=>document.getElementById(id);
-  el('sAvg').textContent=(mean>=0?'+':'')+mean.toFixed(2)+'%';
+  const sgn=(v,d=2)=>(v>=0?'+':'')+v.toFixed(d)+'%';
+  const ciStr=(lo,hi,d=2)=>`[${sgn(lo,d)}, ${sgn(hi,d)}]`;
+
+  el('sAvg').textContent=sgn(mean);
   el('sAvg').className='sum-val '+(mean>=0?'pos':'neg');
+  el('sAvgCI').innerHTML=ci?`${ciStr(ci.mean.lo,ci.mean.hi)}<br><span style="opacity:.7">グロス ${sgn(grossMean)}</span>`:sgn(grossMean);
+
   el('sWin').textContent=(wins/n*100).toFixed(0)+'%';
   el('sWin').className='sum-val '+(wins/n>=0.5?'pos':'neg');
-  el('sDist').textContent=medDist.toFixed(4); el('sDist').className='sum-val neu';
-  el('sCnt').textContent=n; el('sCnt').className='sum-val neu';
+  el('sWinCI').textContent=ci?`[${(ci.win.lo*100).toFixed(0)}%, ${(ci.win.hi*100).toFixed(0)}%]`:'';
+
   el('sSharpe').textContent=sharpe.toFixed(3);
   el('sSharpe').className='sum-val '+(sharpe>1?'pos':sharpe>0?'neu':'neg');
+  el('sSharpeCI').textContent=ci?`[${ci.sh.lo.toFixed(3)}, ${ci.sh.hi.toFixed(3)}]`:'';
+
+  const pfStr=isFinite(pf)?pf.toFixed(2):'∞';
+  el('sPF').textContent=pfStr;
+  el('sPF').className='sum-val '+(pf>=1?'pos':'neg');
+  el('sPFCI').textContent=ci&&isFinite(ci.pf.lo)?`[${ci.pf.lo.toFixed(2)}, ${isFinite(ci.pf.hi)?ci.pf.hi.toFixed(2):'∞'}]`:'';
+
+  el('sEV').textContent=sgn(mean);
+  el('sEV').className='sum-val '+(mean>=0?'pos':'neg');
+  el('sEVCI').textContent=ci?ciStr(ci.mean.lo,ci.mean.hi):'';
+
+  el('sPayoff').textContent=payoff.toFixed(2);
+  el('sPayoff').className='sum-val '+(payoff>=1?'pos':'neg');
+
+  el('sConsec').textContent=ci?`平均 ${ci.consec.avg.toFixed(1)}回 / 95%ile ${ci.consec.p95}回`:'—';
+  el('sConsec').className='sum-val neu';
+
   el('sMaxDD').textContent='-'+avgMDD.toFixed(2)+'%'; el('sMaxDD').className='sum-val neg';
+  el('sDist').textContent=medDist.toFixed(4); el('sDist').className='sum-val neu';
+  el('sCnt').textContent=n; el('sCnt').className='sum-val neu';
   el('sTtest').textContent=pLabel(tPval);
   el('sTtest').className='sum-val '+(tPval<0.05?'sig':'nsig');
   el('sBinom').textContent=pLabel(bPval);
   el('sBinom').className='sum-val '+(bPval<0.05?'sig':'nsig');
+
+  // Signal judgment
+  const pfOk =pf>1.3;
+  const ciLoOk=ci&&ci.mean.lo>0;
+  const winOk =ci&&ci.win.lo>0.5;
+  const judgeEl=el('signalJudge');
+  judgeEl.style.display='block';
+  if (pfOk&&ciLoOk&&winOk) {
+    judgeEl.className='judge-pass';
+    judgeEl.textContent='✓ シグナル採用候補: PF>1.3、ネットリターンCI下限>0、勝率CI下限>50% — 全条件クリア';
+  } else {
+    judgeEl.className='judge-fail';
+    const failed=[];
+    if(!pfOk)failed.push(`PF ${pfStr}（>1.3必要）`);
+    if(!ciLoOk)failed.push(`ネットリターンCI下限 ${ci?sgn(ci.mean.lo):'—'}（>0必要）`);
+    if(!winOk)failed.push(`勝率CI下限 ${ci?(ci.win.lo*100).toFixed(0)+'%':'—'}（>50%必要）`);
+    judgeEl.textContent='✗ 採用条件未達: '+failed.join(' | ');
+  }
 
   const COLORS=['#e05a5a','#f0a050','#f0d080','#56b870','#5b9bd5','#9b72cf','#e07090','#60c8c0','#c0b870','#70a8e0'];
   const queryNorm=Array.from(zNorm(S.data.close.slice(S.queryStart,S.queryStart+qLen)));
@@ -849,11 +1295,11 @@ function renderResults() {
       {label:'0%',data:Array(fLen).fill(0),borderColor:'#3a3228',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false}
     ]},options:mkChartOpts('リターン (%)')
   });
+
   const tbody=el('matchTbody'); tbody.innerHTML='';
   ms.forEach(m=>{
-    const cls=m.fRet>=0?'pos':'neg';
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${m.rank}</td><td>${m.startDate}</td><td>${m.endDate}</td><td>${m.dist.toFixed(4)}</td><td class="${cls}">${m.fRet>=0?'+':''}${m.fRet.toFixed(2)}%</td><td class="pos">+${m.maxGain.toFixed(2)}%</td><td class="neg">-${m.mdd.toFixed(2)}%</td>`;
+    tr.innerHTML=`<td>${m.rank}</td><td>${m.startDate}</td><td>${m.endDate}</td><td>${m.dist.toFixed(4)}</td><td class="${m.fRet>=0?'pos':'neg'}">${sgn(m.fRet)}</td><td class="${m.netRet>=0?'pos':'neg'}">${sgn(m.netRet)}</td><td class="pos">${sgn(m.maxGain)}</td><td class="neg">-${m.mdd.toFixed(2)}%</td><td><span class="exit-tag ${m.exitReason}">${m.exitReason}</span></td><td>${m.exitDay}</td><td>${m.volTier}</td><td>${m.trend}</td>`;
     tbody.appendChild(tr);
   });
 }
