@@ -119,6 +119,7 @@ details[open]>summary::before{content:'▼';}
       <label>将来予測期間（日数）</label>
       <select id="futureLen">
         <option value="5">5日</option><option value="10" selected>10日</option>
+        <option value="15">15日</option>
         <option value="20">20日</option><option value="30">30日</option>
       </select>
     </div>
@@ -265,8 +266,8 @@ details[open]>summary::before{content:'▼';}
         <div class="sum-val" id="sPayoff">—</div>
       </div>
       <div class="sum-card">
-        <div class="sum-lbl">最大連敗数 <span class="sum-sub">（ブートストラップ）</span></div>
-        <div class="sum-val" id="sConsec">—</div>
+        <div class="sum-lbl">最大連敗数 <span class="sum-sub">（ランダム / 時系列）</span></div>
+        <div class="sum-val" id="sConsec" style="font-size:.95rem;line-height:1.5;">—</div>
       </div>
       <div class="sum-card">
         <div class="sum-lbl">最大ドローダウン <span class="sum-sub">（平均）</span></div>
@@ -406,8 +407,10 @@ details[open]>summary::before{content:'▼';}
   <strong>ブートストラップ CI</strong>: マッチ単位・復元抽出 1000 回、95%信頼区間（2.5〜97.5 パーセンタイル）。<br>
   <strong>二項検定</strong>: 厳密計算（正則不完全ベータ関数）、H₁: 勝率 &gt; 50%。 * p&lt;0.05 &nbsp;** p&lt;0.01 &nbsp;*** p&lt;0.001<br>
   <strong>シャープレシオ</strong>: 平均ネットリターン / 標本標準偏差 × √(252/fLen)（rf = 0）。<br>
-  <strong>バックテスト</strong>: ウォークフォワード（拡張窓 or ローリング窓、最低 3 ステップ）。k* は方向的中率で選定（CI 下限ベースは計算量過大のため省略）。<br>
-  <strong>レジームフィルタ</strong>: ボラ = 正規化 ATR 20 日の 3 分位、トレンド = MA200 乖離 ±5%。
+  <strong>バックテスト</strong>: ウォークフォワード（拡張窓 or ローリング窓、最低 3 ステップ）。k* はネット期待値ブートストラップ 95%CI 下限最大で選定（k≥5・n≥20 → k≥3・n≥10 → 方向的中率の順にフォールバック）。<br>
+  <strong>レジームフィルタ</strong>: ボラ = 正規化 ATR 20 日の 3 分位、トレンド = MA200 乖離 ±5%。<br>
+  <strong>最大連敗数</strong>: 「ランダム順序」は勝敗独立仮定での統計分布（ブートストラップ平均・95%ile）、「時系列順」はマッチが実際に発生した順序での連敗数。両者に大きな差がある場合、レジーム依存の偏りがある可能性。<br>
+  <strong>統計的注意</strong>: マッチは近似的独立として扱うが、同一レジーム由来の相関でブートストラップ CI は実態より楽観的（狭すぎる）になる可能性あり。採用基準に加えて追加の安全マージンを推奨。
 </div>
 
 
@@ -415,7 +418,7 @@ details[open]>summary::before{content:'▼';}
 // 実装選択メモ:
 // - ブートストラップ: 1000回, await tick()を50回ごとに挿入 (Web Workerなし)
 // - 正確二項検定: betaI(wins, n-wins+1, p0) を使用
-// - walk-forward k*選定: 方向的中率最大（CI下限ベースは計算量過大のため省略）
+// - walk-forward k*選定: ネット期待値CI下限最大（300回BS）→ フォールバックあり
 // - ローリング窓フォールバック: 3窓未満の場合は拡張窓に自動切替
 
 // ===================== State =====================
@@ -438,7 +441,7 @@ function toggleRollInput() {
 
 function applyMidtermPreset() {
   document.getElementById('queryLen').value = '60';
-  document.getElementById('futureLen').value = '20';
+  document.getElementById('futureLen').value = '15';
   document.getElementById('bandwidth').value = '0.10';
   document.getElementById('kValue').value = '10';
   document.getElementById('btWinMode').value = 'rolling';
@@ -737,6 +740,8 @@ function maxConsecLoss(rets) {
 }
 
 // ===================== Bootstrap =====================
+// 注：マッチは近似的に独立サンプルとして扱うが、同一レジーム由来の相関が残る可能性がある。
+// CIは統計的傾向の目安であり、過信は禁物。サンプル数n<30では特に幅が広くなる。
 async function runBootstrap(netRets, fLen, iters=1000) {
   const n=netRets.length;
   if (n<2) return null;
@@ -869,6 +874,10 @@ async function runSearch() {
       volTier:atrTier(allATR[ce],terciles),trend:trendRegime(prices,ce)};
   });
 
+  // Time-series consecutive loss (actual occurrence order)
+  const timeSorted=[...S.matches].sort((a,b)=>a.idx-b.idx);
+  const timeSeriesConsec=maxConsecLoss(timeSorted.map(m=>m.netRet));
+
   // Bootstrap CI
   status('loading','ブートストラップCI計算中…');
   const ci=await runBootstrap(S.matches.map(m=>m.netRet),fLen);
@@ -883,7 +892,7 @@ async function runSearch() {
 
   btn.disabled=false;
   status('ok',`${S.matches.length}件のパターンを発見`);
-  renderResults(ci);
+  renderResults(ci, timeSeriesConsec);
   document.getElementById('results').style.display='block';
   document.getElementById('backtestCard').style.display='block';
   document.getElementById('algoInfo').style.display='block';
@@ -945,6 +954,46 @@ async function runBacktest() {
   finally{btn.disabled=false;}
 }
 
+// k* selection: bootstrap CI lower bound (300 iters) with fallback chain
+function selectBestKbyCILower(kRange,kNetArr,kTotal,kCorrect) {
+  const bootstrapCIlo=(arr,iters=300)=>{
+    if(arr.length<2)return -Infinity;
+    const n=arr.length;
+    const means=[];
+    for(let i=0;i<iters;i++){
+      let s=0;
+      for(let j=0;j<n;j++)s+=arr[Math.floor(Math.random()*n)];
+      means.push(s/n);
+    }
+    means.sort((a,b)=>a-b);
+    return means[Math.floor(iters*0.025)];
+  };
+  // Primary: k≥5, n≥20, max CI lower bound
+  let bestK=null,bestCI=-Infinity;
+  for(const k of kRange){
+    if(k<5||kTotal[k]<20)continue;
+    const lo=bootstrapCIlo(kNetArr[k]);
+    if(lo>bestCI){bestCI=lo;bestK=k;}
+  }
+  if(bestK!==null)return{bestK,selectionMode:'CI下限(k≥5,n≥20)'};
+  // Fallback 1: k≥3, n≥10
+  bestCI=-Infinity;
+  for(const k of kRange){
+    if(k<3||kTotal[k]<10)continue;
+    const lo=bootstrapCIlo(kNetArr[k]);
+    if(lo>bestCI){bestCI=lo;bestK=k;}
+  }
+  if(bestK!==null)return{bestK,selectionMode:'CI下限FB(k≥3,n≥10)'};
+  // Fallback 2: direction accuracy
+  let bestAcc=-1; bestK=null;
+  for(const k of kRange){
+    if(kTotal[k]<5)continue;
+    const acc=kCorrect[k]/kTotal[k];
+    if(acc>bestAcc){bestAcc=acc;bestK=k;}
+  }
+  return{bestK,selectionMode:'方向的中率(FB)'};
+}
+
 async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
   const N=prices.length;
   const trainSize=Math.floor(N*0.5);
@@ -1003,6 +1052,7 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
     const kNetSum =Object.fromEntries(kRange.map(k=>[k,0]));
     const kPosNet =Object.fromEntries(kRange.map(k=>[k,0]));
     const kNegNet =Object.fromEntries(kRange.map(k=>[k,0]));
+    const kNetArr =Object.fromEntries(kRange.map(k=>[k,[]]));
 
     for (const qStart of testIdxs) {
       const query=zNorm(prices.slice(qStart,qStart+qLen));
@@ -1031,15 +1081,12 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
         kGrossSum[k]+=actual*100;
         kNetSum[k]+=netPct;
         if(netPct>0)kPosNet[k]+=netPct;else kNegNet[k]+=Math.abs(netPct);
+        kNetArr[k].push(netPct);
         if(Math.sign(pred)===Math.sign(actual))kCorrect[k]++;
       }
     }
-    let bestK=null,bestAcc=-1;
-    for (const k of kRange) {
-      if(kTotal[k]<5)continue;
-      const acc=kCorrect[k]/kTotal[k];
-      if(acc>bestAcc){bestAcc=acc;bestK=k;}
-    }
+    // k* selection: bootstrap CI lower bound with fallback chain
+    const {bestK,selectionMode}=selectBestKbyCILower(kRange,kNetArr,kTotal,kCorrect);
     if(bestK===null){await tick();continue;}
     const pf=kNegNet[bestK]<1e-10?(kPosNet[bestK]>0?Infinity:1):kPosNet[bestK]/kNegNet[bestK];
     stepResults.push({
@@ -1047,7 +1094,8 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
       trainStart,trainEnd,testStart,testEnd,
       trainPeriod:`${dates[trainStart]??''}〜${dates[trainEnd-1]??''}`,
       testPeriod :`${dates[testStart]??''}〜${dates[testEnd-1]??''}`,
-      kstar:bestK,acc:bestAcc,
+      kstar:bestK,selectionMode,
+      acc:kTotal[bestK]>0?kCorrect[bestK]/kTotal[bestK]:0,
       avgGross:kGrossSum[bestK]/kTotal[bestK],
       avgNet:kNetSum[bestK]/kTotal[bestK],
       pf,samples:kTotal[bestK],
@@ -1066,6 +1114,10 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
   for(const s of stepResults)kFreq[s.kstar]=(kFreq[s.kstar]||0)+1;
   const consensusK=+Object.entries(kFreq).sort((a,b)=>b[1]-a[1]||+a[0]-+b[0])[0][0];
 
+  const modeCount={};
+  for(const s of stepResults)modeCount[s.selectionMode]=(modeCount[s.selectionMode]||0)+1;
+  const kSelNote=Object.entries(modeCount).map(([m,c])=>`${m}: ${c}ステップ`).join(' / ');
+
   const warnings=[];
   if(usedFallback)warnings.push({type:'info',msg:'ローリング窓でウィンドウ数不足のため拡張窓に自動切替しました'});
   const lowSteps=stepResults.filter(s=>s.acc<0.5).length;
@@ -1075,7 +1127,7 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
   if(lowSamp.length>0)
     warnings.push({type:'warn',msg:`サンプル不足：${lowSamp.length}ステップでテストサンプルが10件未満です`});
 
-  return{walkFwd:true,stepResults,consensusK,meanAcc,stdAcc,minAcc,maxAcc,warnings};
+  return{walkFwd:true,stepResults,consensusK,meanAcc,stdAcc,minAcc,maxAcc,warnings,kSelNote};
 }
 
 async function backtestSimple(prices,qLen,fLen,kMin,kMax,bw) {
@@ -1170,6 +1222,16 @@ function renderBacktest(r) {
       tbody.appendChild(tr);
     });
     document.getElementById('kValue').value=r.consensusK;
+    if(r.kSelNote){
+      let noteEl=el('btKSelNote');
+      if(!noteEl){
+        noteEl=document.createElement('p');
+        noteEl.id='btKSelNote';
+        noteEl.style.cssText='font-size:.78rem;opacity:.7;margin:.4rem 0 0;';
+        el('btStepSection').appendChild(noteEl);
+      }
+      noteEl.textContent='k*選定モード — '+r.kSelNote;
+    }
   } else {
     el('btKstar').textContent=r.kstar; el('btKstar').className='bt-val pos';
     el('btAcc').textContent=(r.acc*100).toFixed(1)+'%';
@@ -1192,7 +1254,7 @@ function renderBacktest(r) {
 }
 
 // ===================== Render results =====================
-function renderResults(ci) {
+function renderResults(ci, timeSeriesConsec) {
   const ms=S.matches, fLen=+document.getElementById('futureLen').value;
   const qLen=+document.getElementById('queryLen').value, n=ms.length;
   const netRets=ms.map(m=>m.netRet);
@@ -1241,7 +1303,9 @@ function renderResults(ci) {
   el('sPayoff').textContent=payoff.toFixed(2);
   el('sPayoff').className='sum-val '+(payoff>=1?'pos':'neg');
 
-  el('sConsec').textContent=ci?`平均 ${ci.consec.avg.toFixed(1)}回 / 95%ile ${ci.consec.p95}回`:'—';
+  el('sConsec').innerHTML=ci
+    ? `ランダム: 平均 ${ci.consec.avg.toFixed(1)}回 / 95%ile ${ci.consec.p95}回<br>時系列: ${timeSeriesConsec??'—'}回`
+    : (timeSeriesConsec!=null?`時系列: ${timeSeriesConsec}回`:'—');
   el('sConsec').className='sum-val neu';
 
   el('sMaxDD').textContent='-'+avgMDD.toFixed(2)+'%'; el('sMaxDD').className='sum-val neg';
