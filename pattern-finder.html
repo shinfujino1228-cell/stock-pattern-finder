@@ -184,7 +184,7 @@ details[open]>summary::before{content:'▼';}
       </div>
       <div style="margin-top:8px;">
         <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text);">
-          <input type="checkbox" id="atrBased"> ATRベースで動的調整（固定%を上書き）
+          <input type="checkbox" id="atrBased" onchange="toggleATRMode()"> ATRベースで動的調整（SL/TPを自動有効化・固定%を上書き）
         </label>
         <div style="display:flex;gap:8px;margin-top:4px;">
           <div style="flex:1;">
@@ -457,6 +457,15 @@ function setMode(m) {
   document.getElementById('clusterCard').classList.toggle('show', m==='live');
 }
 
+function toggleATRMode() {
+  const on = document.getElementById('atrBased').checked;
+  // ATRベース有効時は固定%入力欄をグレーアウトして混乱を防ぐ
+  ['slValue','tpValue'].forEach(id => {
+    document.getElementById(id).disabled = on;
+    document.getElementById(id).style.opacity = on ? '0.4' : '1';
+  });
+}
+
 function toggleRollInput() {
   const on = document.getElementById('btWinMode').value === 'rolling';
   document.getElementById('rollInputWrap').style.display = on ? '' : 'none';
@@ -512,20 +521,20 @@ function getExitRules() {
 }
 function computeRealizedReturn(futurePrices, exitRules, entryATR) {
   const entry = futurePrices[0];
-  let slVal = exitRules.stopLoss.value;
-  let tpVal = exitRules.takeProfit.value;
-  if (exitRules.atrBased && entryATR != null) {
-    slVal = entryATR * exitRules.atrSLmult;
-    tpVal = entryATR * exitRules.atrTPmult;
-  }
+  const atrActive = exitRules.atrBased && entryATR != null;
+  let slVal = atrActive ? entryATR * exitRules.atrSLmult : exitRules.stopLoss.value;
+  let tpVal = atrActive ? entryATR * exitRules.atrTPmult : exitRules.takeProfit.value;
+  // ATRベース有効時はSL/TP個別チェックボックスに関わらず発動
+  const slEnabled = exitRules.stopLoss.enabled || atrActive;
+  const tpEnabled = exitRules.takeProfit.enabled || atrActive;
   let peak = entry;
   for (let i = 1; i < futurePrices.length; i++) {
     const p = futurePrices[i];
     const retPct = (p / entry - 1) * 100;
     peak = Math.max(peak, p);
-    if (exitRules.stopLoss.enabled && retPct <= -slVal)
+    if (slEnabled && retPct <= -slVal)
       return { returnPct: -slVal, exitDay: i, reason: 'SL' };
-    if (exitRules.takeProfit.enabled && retPct >= tpVal)
+    if (tpEnabled && retPct >= tpVal)
       return { returnPct: tpVal, exitDay: i, reason: 'TP' };
     if (exitRules.trailing.enabled) {
       const dd = (peak - p) / peak * 100;
