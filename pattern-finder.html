@@ -182,6 +182,21 @@ details[open]>summary::before{content:'▼';}
           <label style="color:var(--green);font-size:.75rem;">✓ 満期保有（条件ヒットなし時は自動）</label>
         </div>
       </div>
+      <div style="margin-top:8px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--text);">
+          <input type="checkbox" id="atrBased"> ATRベースで動的調整（固定%を上書き）
+        </label>
+        <div style="display:flex;gap:8px;margin-top:4px;">
+          <div style="flex:1;">
+            <label style="font-size:.68rem;color:var(--text2);">SL倍率（×ATR）</label>
+            <input type="number" id="atrSLmult" value="1.5" min="0.5" max="5" step="0.1">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:.68rem;color:var(--text2);">TP倍率（×ATR）</label>
+            <input type="number" id="atrTPmult" value="2.5" min="0.5" max="10" step="0.1">
+          </div>
+        </div>
+      </div>
     </div>
   </details>
 
@@ -355,6 +370,10 @@ details[open]>summary::before{content:'▼';}
       <label>訓練窓長（日）</label>
       <input type="number" id="btRollLen" value="750" min="100" max="3000">
     </div>
+    <div class="ctrl" style="width:130px">
+      <label>Embargo期間（日）</label>
+      <input type="number" id="btEmbargo" value="20" min="0" max="100">
+    </div>
     <button class="btn btn-go" id="btnBacktest" onclick="runBacktest()" disabled>バックテスト実行</button>
     <span class="status" id="btStatus"></span>
   </div>
@@ -364,6 +383,7 @@ details[open]>summary::before{content:'▼';}
       <div class="bt-card"><div class="bt-lbl">方向的中率（平均）</div><div class="bt-val" id="btAcc">—</div></div>
       <div class="bt-card"><div class="bt-lbl">標準偏差</div><div class="bt-val" id="btStd">—</div></div>
       <div class="bt-card"><div class="bt-lbl">有効ステップ数</div><div class="bt-val" id="btSteps">—</div></div>
+      <div class="bt-card"><div class="bt-lbl">k*安定性 <span class="sum-sub">（CV）</span></div><div class="bt-val" id="btKStability">—</div></div>
     </div>
     <div id="btStatBox" style="background:var(--surface2);border-radius:8px;padding:12px;margin-top:10px;display:none">
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:8px">
@@ -377,6 +397,7 @@ details[open]>summary::before{content:'▼';}
     <div id="btWarnRoll" class="warn-box" style="display:none;"></div>
     <div id="btWarnError" class="warn-red" style="display:none;"></div>
     <div id="btWarnSample" class="warn-box" style="display:none;"></div>
+    <div id="btWarnKStab" class="warn-box" style="display:none;"></div>
     <div id="btStepSection" style="display:none;margin-top:12px">
       <div style="font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">ウォークフォワード詳細</div>
       <div class="tbl-scroll">
@@ -403,11 +424,12 @@ details[open]>summary::before{content:'▼';}
 <div id="algoInfo" class="info" style="display:none">
   <strong>アルゴリズム解説</strong><br>
   <strong>IDTW</strong>: Z スコア正規化（母標準偏差）+ Sakoe-Chiba 帯域制約 DTW（パス長正規化）。<br>
-  <strong>De-overlap</strong>: マッチ間距離 ≥ queryLen + futureLen（窓と将来期間の完全非重複）。<br>
+  <strong>De-overlap</strong>: マッチ間距離 ≥ queryLen + futureLen + 5日バッファ（市場ミクロ構造の共有を防ぐ）。runSearch では future 侵入チェックも追加（マッチの future 末端がクエリ開始以降に侵入するものを除外）。<br>
   <strong>ブートストラップ CI</strong>: マッチ単位・復元抽出 1000 回、95%信頼区間（2.5〜97.5 パーセンタイル）。<br>
   <strong>二項検定</strong>: 厳密計算（正則不完全ベータ関数）、H₁: 勝率 &gt; 50%。 * p&lt;0.05 &nbsp;** p&lt;0.01 &nbsp;*** p&lt;0.001<br>
   <strong>シャープレシオ</strong>: 平均ネットリターン / 標本標準偏差 × √(252/fLen)（rf = 0）。<br>
-  <strong>バックテスト</strong>: ウォークフォワード（拡張窓 or ローリング窓、最低 3 ステップ）。k* はネット期待値ブートストラップ 95%CI 下限最大で選定（k≥5・n≥20 → k≥3・n≥10 → 方向的中率の順にフォールバック）。<br>
+  <strong>バックテスト</strong>: ウォークフォワード（拡張窓 or ローリング窓、最低 3 ステップ）。訓練末尾〜テスト先頭に Embargo 期間（デフォルト 20 日）を設けデータリークを防ぐ。k* はネット期待値ブートストラップ 95%CI 下限最大で選定（k≥5・n≥20 → k≥3・n≥10 → 方向的中率の順にフォールバック）。<br>
+  <strong>k*安定性（CV）</strong>: 採用 k* の ±2 範囲での CI 下限の変動係数。CV &lt; 0.3 なら安定（過学習リスク低）、0.3〜0.5 は要注意、0.5 以上は不安定（過学習の疑い）。<br>
   <strong>レジームフィルタ</strong>: ボラ = 正規化 ATR 20 日の 3 分位、トレンド = MA200 乖離 ±5%。<br>
   <strong>最大連敗数</strong>: 「ランダム順序」は勝敗独立仮定での統計分布（ブートストラップ平均・95%ile）、「時系列順」はマッチが実際に発生した順序での連敗数。両者に大きな差がある場合、レジーム依存の偏りがある可能性。<br>
   <strong>統計的注意</strong>: マッチは近似的独立として扱うが、同一レジーム由来の相関でブートストラップ CI は実態より楽観的（狭すぎる）になる可能性あり。採用基準に加えて追加の安全マージンを推奨。
@@ -423,6 +445,7 @@ details[open]>summary::before{content:'▼';}
 
 // ===================== State =====================
 const S = { mode:'demo', data:null, queryStart:0, matches:[], charts:{} };
+const DEOVERLAP_BUFFER = 5; // 5営業日の追加バッファ（ミクロ構造共有を防ぐ）
 
 // ===================== Mode / Preset =====================
 function setMode(m) {
@@ -482,19 +505,28 @@ function getExitRules() {
     stopLoss:   { enabled: document.getElementById('slEnabled').checked,  value: +document.getElementById('slValue').value },
     takeProfit: { enabled: document.getElementById('tpEnabled').checked, value: +document.getElementById('tpValue').value },
     trailing:   { enabled: document.getElementById('tsEnabled').checked,  value: +document.getElementById('tsValue').value },
+    atrBased:   document.getElementById('atrBased').checked,
+    atrSLmult:  +document.getElementById('atrSLmult').value,
+    atrTPmult:  +document.getElementById('atrTPmult').value,
   };
 }
-function computeRealizedReturn(futurePrices, exitRules) {
+function computeRealizedReturn(futurePrices, exitRules, entryATR) {
   const entry = futurePrices[0];
+  let slVal = exitRules.stopLoss.value;
+  let tpVal = exitRules.takeProfit.value;
+  if (exitRules.atrBased && entryATR != null) {
+    slVal = entryATR * exitRules.atrSLmult;
+    tpVal = entryATR * exitRules.atrTPmult;
+  }
   let peak = entry;
   for (let i = 1; i < futurePrices.length; i++) {
     const p = futurePrices[i];
     const retPct = (p / entry - 1) * 100;
     peak = Math.max(peak, p);
-    if (exitRules.stopLoss.enabled && retPct <= -exitRules.stopLoss.value)
-      return { returnPct: -exitRules.stopLoss.value, exitDay: i, reason: 'SL' };
-    if (exitRules.takeProfit.enabled && retPct >= exitRules.takeProfit.value)
-      return { returnPct: exitRules.takeProfit.value, exitDay: i, reason: 'TP' };
+    if (exitRules.stopLoss.enabled && retPct <= -slVal)
+      return { returnPct: -slVal, exitDay: i, reason: 'SL' };
+    if (exitRules.takeProfit.enabled && retPct >= tpVal)
+      return { returnPct: tpVal, exitDay: i, reason: 'TP' };
     if (exitRules.trailing.enabled) {
       const dd = (peak - p) / peak * 100;
       if (dd >= exitRules.trailing.value)
@@ -825,6 +857,8 @@ async function runSearch() {
     for (let i=start;i<end;i++) {
       // 強化de-overlap: クエリとの完全非重複
       if (Math.abs(i-qs)<qLen+fLen) continue;
+      // future侵入チェック: マッチのfuture期間がクエリ開始以降に侵入しないこと
+      if (i < qs && i+qLen+fLen > qs) continue;
       dists.push({idx:i,d:dtwDist(query,zNorm(prices.slice(i,i+qLen)),bw)});
     }
     fill.style.width=Math.round((end/(maxStart+1))*100)+'%';
@@ -850,18 +884,19 @@ async function runSearch() {
   const filtered=dists.filter(filterMatch);
   const src=filtered.length>=k?filtered:dists; // フィルタが厳しすぎる場合はフォールバック
 
-  // k*-NN with strengthened de-overlap: |i-j| >= qLen+fLen
+  // k*-NN with strengthened de-overlap: |i-j| >= qLen+fLen+DEOVERLAP_BUFFER
   const picked=[];
   for (const item of src) {
     if (picked.length>=k) break;
-    if (picked.every(p=>Math.abs(p.idx-item.idx)>=qLen+fLen)) picked.push(item);
+    if (picked.every(p=>Math.abs(p.idx-item.idx)>=qLen+fLen+DEOVERLAP_BUFFER)) picked.push(item);
   }
   prog.style.display='none';
 
   S.matches=picked.map((item,rank)=>{
     const pat =Array.from(prices.slice(item.idx,item.idx+qLen));
     const fut =Array.from(prices.slice(item.idx+qLen,item.idx+qLen+fLen));
-    const realized=computeRealizedReturn(fut,exitRules);
+    const entryATR=allATR[item.idx+qLen-1];
+    const realized=computeRealizedReturn(fut,exitRules,entryATR);
     const grossRet=fut.length?(fut.at(-1)/fut[0]-1)*100:0;
     const netRet  =calcNetReturn(realized.returnPct,realized.exitDay||fLen,cm);
     const maxGain =fut.length?(Math.max(...fut)/fut[0]-1)*100:0;
@@ -936,6 +971,7 @@ async function runBacktest() {
   btSt.className='status loading'; btSt.textContent='バックテスト実行中…';
   await tick();
   const prices=S.data.close;
+  const high=S.data.high, low=S.data.low;
   const qLen=+document.getElementById('queryLen').value;
   const fLen=+document.getElementById('futureLen').value;
   const kMin=Math.max(1,+document.getElementById('btKMin').value);
@@ -946,7 +982,7 @@ async function runBacktest() {
   const exitRules=getExitRules();
   try {
     const result=walkFwd
-      ? await backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules)
+      ? await backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules,high,low)
       : await backtestSimple(prices,qLen,fLen,kMin,kMax,bw);
     renderBacktest(result);
     btSt.className='status ok'; btSt.textContent='完了';
@@ -994,13 +1030,16 @@ function selectBestKbyCILower(kRange,kNetArr,kTotal,kCorrect) {
   return{bestK,selectionMode:'方向的中率(FB)'};
 }
 
-async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
+async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules,high,low) {
   const N=prices.length;
   const trainSize=Math.floor(N*0.5);
   const testSize =Math.floor(N*0.2);
   const winMode  =document.getElementById('btWinMode').value;
   const rollLen  =+document.getElementById('btRollLen').value;
+  const allATR   =computeAllATR(prices,high||null,low||null);
   let usedFallback=false;
+
+  const embargo=Math.max(0,+document.getElementById('btEmbargo').value);
 
   function buildWindows(mode) {
     const wins=[];
@@ -1008,19 +1047,19 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
       for (let s=0;;s++) {
         const trainStart=s*testSize;
         const trainEnd  =trainStart+rollLen;
-        const testStart =trainEnd;
+        const testStart =trainEnd+embargo;
         const testEnd   =Math.min(testStart+testSize,N);
         if (testStart>=N||testEnd-testStart<qLen+fLen) break;
-        wins.push({trainStart,trainEnd,testStart,testEnd});
+        wins.push({trainStart,trainEnd,testStart,testEnd,embargo});
       }
     } else {
       for (let s=0;;s++) {
         const trainStart=0;
         const trainEnd  =trainSize+s*testSize;
-        const testStart =trainEnd;
+        const testStart =trainEnd+embargo;
         const testEnd   =Math.min(testStart+testSize,N);
         if (testStart>=N||testEnd-testStart<qLen+fLen) break;
-        wins.push({trainStart,trainEnd,testStart,testEnd});
+        wins.push({trainStart,trainEnd,testStart,testEnd,embargo});
       }
     }
     return wins;
@@ -1066,7 +1105,7 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
         const picked=[];
         for (const item of dists) {
           if(picked.length>=k)break;
-          if(picked.every(p=>Math.abs(p.idx-item.idx)>=qLen+fLen))picked.push(item);
+          if(picked.every(p=>Math.abs(p.idx-item.idx)>=qLen+fLen+DEOVERLAP_BUFFER))picked.push(item);
         }
         if(!picked.length)continue;
         const pred=picked.reduce((s,item)=>{
@@ -1075,7 +1114,8 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
         },0)/picked.length;
         if(pred===0)continue;
         const fut=Array.from(prices.slice(qStart+qLen,qStart+qLen+fLen));
-        const realized=computeRealizedReturn(fut,exitRules);
+        const entryATRbt=allATR[qStart+qLen-1];
+        const realized=computeRealizedReturn(fut,exitRules,entryATRbt);
         const netPct=calcNetReturn(realized.returnPct,realized.exitDay||fLen,cm);
         kTotal[k]++;
         kGrossSum[k]+=actual*100;
@@ -1092,13 +1132,14 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
     stepResults.push({
       step:stepResults.length+1,
       trainStart,trainEnd,testStart,testEnd,
-      trainPeriod:`${dates[trainStart]??''}〜${dates[trainEnd-1]??''}`,
+      trainPeriod:`${dates[trainStart]??''}〜${dates[trainEnd-1]??''}${embargo>0?` →${embargo}d→`:''}`,
       testPeriod :`${dates[testStart]??''}〜${dates[testEnd-1]??''}`,
       kstar:bestK,selectionMode,
       acc:kTotal[bestK]>0?kCorrect[bestK]/kTotal[bestK]:0,
       avgGross:kGrossSum[bestK]/kTotal[bestK],
       avgNet:kNetSum[bestK]/kTotal[bestK],
       pf,samples:kTotal[bestK],
+      kNetArrByK:Object.fromEntries(kRange.map(k=>[k,[...kNetArr[k]]])),
     });
     await tick();
   }
@@ -1118,6 +1159,33 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
   for(const s of stepResults)modeCount[s.selectionMode]=(modeCount[s.selectionMode]||0)+1;
   const kSelNote=Object.entries(modeCount).map(([m,c])=>`${m}: ${c}ステップ`).join(' / ');
 
+  // k stability: bootstrap CI-lo over combined net returns per k
+  const bsCI300=(arr)=>{
+    const n=arr.length; const means=[];
+    for(let it=0;it<300;it++){
+      let s=0; for(let j=0;j<n;j++)s+=arr[Math.floor(Math.random()*n)];
+      means.push(s/n);
+    }
+    means.sort((a,b)=>a-b);
+    return means[Math.floor(300*0.025)];
+  };
+  const kStability={};
+  for(const k of kRange){
+    const all=[];
+    for(const step of stepResults)if(step.kNetArrByK[k])all.push(...step.kNetArrByK[k]);
+    if(all.length>=10)kStability[k]={ciLo:bsCI300(all),n:all.length};
+  }
+  const nearKs=[consensusK-2,consensusK-1,consensusK,consensusK+1,consensusK+2]
+    .filter(k=>kStability[k]);
+  let kStabilityCV=Infinity,kStabilityStable=false;
+  if(nearKs.length>=2){
+    const ciLos=nearKs.map(k=>kStability[k].ciLo);
+    const meanCI=ciLos.reduce((a,b)=>a+b,0)/ciLos.length;
+    const stdCI=Math.sqrt(ciLos.reduce((s,v)=>s+(v-meanCI)**2,0)/ciLos.length);
+    kStabilityCV=Math.abs(meanCI)>0.01?stdCI/Math.abs(meanCI):Infinity;
+    kStabilityStable=kStabilityCV<0.3;
+  }
+
   const warnings=[];
   if(usedFallback)warnings.push({type:'info',msg:'ローリング窓でウィンドウ数不足のため拡張窓に自動切替しました'});
   const lowSteps=stepResults.filter(s=>s.acc<0.5).length;
@@ -1126,8 +1194,10 @@ async function backtestWalkForward(prices,qLen,fLen,kMin,kMax,bw,cm,exitRules) {
   const lowSamp=stepResults.filter(s=>s.samples<10);
   if(lowSamp.length>0)
     warnings.push({type:'warn',msg:`サンプル不足：${lowSamp.length}ステップでテストサンプルが10件未満です`});
+  if(!kStabilityStable&&isFinite(kStabilityCV))
+    warnings.push({type:'warn',msg:`k*周辺の安定性が低い（CV=${kStabilityCV.toFixed(2)}）— 過学習の疑いあり。kを変更して再検証を推奨`});
 
-  return{walkFwd:true,stepResults,consensusK,meanAcc,stdAcc,minAcc,maxAcc,warnings,kSelNote};
+  return{walkFwd:true,stepResults,consensusK,meanAcc,stdAcc,minAcc,maxAcc,warnings,kSelNote,kStability,kStabilityCV,kStabilityStable};
 }
 
 async function backtestSimple(prices,qLen,fLen,kMin,kMax,bw) {
@@ -1162,7 +1232,7 @@ async function backtestSimple(prices,qLen,fLen,kMin,kMax,bw) {
       const picked=[];
       for(const item of dists){
         if(picked.length>=k)break;
-        if(picked.every(p=>Math.abs(p.idx-item.idx)>=qLen+fLen))picked.push(item);
+        if(picked.every(p=>Math.abs(p.idx-item.idx)>=qLen+fLen+DEOVERLAP_BUFFER))picked.push(item);
       }
       if(!picked.length)continue;
       const pred=picked.reduce((s,item)=>{
@@ -1202,15 +1272,24 @@ function renderBacktest(r) {
     const stable=r.stdAcc<0.1;
     el('btStabilityComment').textContent=stable?'✓ 安定：標準偏差 < 10%':`△ 不安定：標準偏差 ${(r.stdAcc*100).toFixed(1)}%`;
     el('btStabilityComment').style.color=stable?'var(--green)':'var(--accent)';
+    if(r.kStabilityCV!==undefined){
+      const cvStr=isFinite(r.kStabilityCV)?r.kStabilityCV.toFixed(2):'∞';
+      el('btKStability').textContent=cvStr;
+      el('btKStability').className='bt-val '+(r.kStabilityStable?'pos':(r.kStabilityCV<0.5?'neu':'neg'));
+    } else { el('btKStability').textContent='—'; el('btKStability').className='bt-val neu'; }
     const infoW=r.warnings.find(w=>w.type==='info');
     const errW =r.warnings.find(w=>w.type==='error');
-    const smpW =r.warnings.find(w=>w.type==='warn');
+    const smpWs=r.warnings.filter(w=>w.type==='warn');
     el('btWarnRoll').style.display=infoW?'block':'none';
     if(infoW)el('btWarnRoll').textContent='⚠️ '+infoW.msg;
     el('btWarnError').style.display=errW?'block':'none';
     if(errW)el('btWarnError').textContent='⚠️ '+errW.msg;
+    const smpW=smpWs.find(w=>w.msg.includes('サンプル'));
     el('btWarnSample').style.display=smpW?'block':'none';
     if(smpW)el('btWarnSample').textContent='⚠️ '+smpW.msg;
+    const kStabW=smpWs.find(w=>w.msg.includes('k*'));
+    el('btWarnKStab').style.display=kStabW?'block':'none';
+    if(kStabW)el('btWarnKStab').textContent='⚠️ '+kStabW.msg;
     el('btStepSection').style.display='block'; el('btKSection').style.display='none';
     const tbody=el('btStepTbody'); tbody.innerHTML='';
     r.stepResults.forEach(s=>{
